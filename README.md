@@ -33,6 +33,7 @@ Setelah semua setup dijalankan, struktur direktori `/var/www/repo/` akan tampak 
 │                   └── Packages.gz  # Indeks terkompresi
 └── fedora/                   # Fedora Repository Root
     ├── *.rpm                 # File .rpm disimpan di sini
+    ├── deps-oktanio.repo     # Berkas konfigurasi client (dibuat otomatis)
     └── repodata/             # Metadata YUM/DNF (dibuat otomatis oleh createrepo)
 ```
 
@@ -41,11 +42,12 @@ Setelah semua setup dijalankan, struktur direktori `/var/www/repo/` akan tampak 
 ## 1. Setup & Penggunaan Ubuntu/Debian Repository
 
 ### A. Setup Awal
-Jalankan skrip `setup-ubuntu.sh` untuk membuat struktur direktori awal dan file konfigurasi repositori:
+Jalankan skrip `setup-ubuntu.sh` untuk menginstal dependensi (jika diperlukan), membuat struktur direktori awal, dan file konfigurasi repositori:
 ```bash
 sudo ./setup-ubuntu.sh
 ```
 *Catatan: Anda bisa mengubah lokasi default repositori dengan memberikan argumen, misalnya: `sudo ./setup-ubuntu.sh /jalur/ke/repo/debian`.*
+*Variabel domain diatur menggunakan `REPO_URL="https://deps.oktanio.dev"` di bagian atas skrip.*
 
 ### B. Menambahkan Paket ke Ubuntu
 Untuk mengunduh dan menambahkan paket `.deb` dari URL langsung ke repositori Anda, gunakan skrip `add-package-ubuntu.sh`:
@@ -66,16 +68,15 @@ Skrip ini secara otomatis akan:
 ## 2. Setup & Penggunaan Fedora Repository
 
 ### Prasyarat
-Untuk mengelola repositori Fedora, Anda memerlukan tool `createrepo_c` (atau `createrepo`). Install terlebih dahulu menggunakan package manager Anda:
-- **Fedora/RHEL/CentOS:** `sudo dnf install createrepo_c`
-- **Ubuntu/Debian:** `sudo apt install createrepo`
+Untuk mengelola repositori Fedora, Anda memerlukan tool `createrepo_c` (atau `createrepo`). Jika belum terpasang, skrip setup akan menginstalnya secara otomatis menggunakan package manager sistem Anda.
 
 ### A. Setup Awal
-Jalankan skrip `setup-fedora.sh` untuk membuat struktur direktori Fedora dan menginisialisasi metadata repositori:
+Jalankan skrip `setup-fedora.sh` untuk menginstal dependensi, membuat struktur direktori Fedora, menginisialisasi metadata repositori, serta membuat file konfigurasi client secara otomatis:
 ```bash
 sudo ./setup-fedora.sh
 ```
 *Catatan: Anda bisa mengubah lokasi default repositori dengan memberikan argumen, misalnya: `sudo ./setup-fedora.sh /jalur/ke/repo/fedora`.*
+*Variabel domain diatur menggunakan `REPO_URL="https://deps.oktanio.dev"` di bagian atas skrip.*
 
 ### B. Menambahkan Paket ke Fedora (Cara Tambah Package)
 Untuk menambahkan paket `.rpm` (baik dari internet berupa URL, maupun file lokal yang sudah diunduh), gunakan skrip `add-package-fedora.sh`:
@@ -105,7 +106,7 @@ Buat file konfigurasi virtual host Nginx baru, misalnya di `/etc/nginx/sites-ava
 ```nginx
 server {
     listen 80;
-    server_name repo.example.com; # Ubah dengan domain atau IP Server Anda
+    server_name deps.oktanio.dev; # Ubah domain jika pindah host
 
     root /var/www/repo;
     autoindex on; # Wajib diaktifkan agar direktori dapat dilist oleh package manager
@@ -127,12 +128,12 @@ sudo systemctl restart nginx
 
 ## 4. Konfigurasi di Sisi Client (Pengguna Repositori)
 
-Setelah web server berjalan di `http://repo.example.com` (ganti dengan IP atau domain Anda), client dapat mendaftarkan repositori tersebut dengan cara berikut:
+Setelah web server berjalan di `https://deps.oktanio.dev`, client dapat mendaftarkan repositori tersebut dengan cara berikut:
 
 ### A. Untuk Client Ubuntu/Debian
-Buat file source list baru di `/etc/apt/sources.list.d/custom-repo.list`:
+Buat file source list baru di `/etc/apt/sources.list.d/deps-oktanio.list`:
 ```bash
-echo "deb [trusted=yes] http://repo.example.com/debian stable main" | sudo tee /etc/apt/sources.list.d/custom-repo.list
+echo "deb [trusted=yes] https://deps.oktanio.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-oktanio.list
 ```
 *Catatan: Opsi `[trusted=yes]` digunakan jika repositori tidak ditandatangani dengan kunci GPG.*
 
@@ -143,15 +144,19 @@ sudo apt update
 Sekarang Anda siap memasang aplikasi dari repositori tersebut menggunakan `sudo apt install <nama-paket>`.
 
 ### B. Untuk Client Fedora
-Buat file konfigurasi repositori baru di `/etc/yum.repos.d/custom-repo.repo`:
+Client Fedora dapat dengan mudah mengunduh file konfigurasi repo yang sudah otomatis terbuat saat menjalankan `setup-fedora.sh`:
+```bash
+sudo curl -sL https://deps.oktanio.dev/fedora/deps-oktanio.repo -o /etc/yum.repos.d/deps-oktanio.repo
+```
+
+Atau mendaftarkannya secara manual dengan membuat file `/etc/yum.repos.d/deps-oktanio.repo`:
 ```ini
-[custom-repo]
-name=Custom Fedora Repository
-baseurl=http://repo.example.com/fedora
+[deps-oktanio]
+name=Deps Oktanio Repository
+baseurl=https://deps.oktanio.dev/fedora
 enabled=1
 gpgcheck=0
 ```
-*Catatan: `gpgcheck=0` menandakan bahwa kita menonaktifkan pengecekan tanda tangan digital paket.*
 
 Perbarui cache repositori:
 ```bash
@@ -185,10 +190,10 @@ gpg --yes -abs -o dists/stable/Release.gpg dists/stable/Release
 **Konfigurasi Client Ubuntu (Aman):**
 ```bash
 # Unduh & daftarkan public key
-curl -fsSL http://repo.example.com/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/custom-repo.gpg
+curl -fsSL https://deps.oktanio.dev/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-oktanio.gpg
 
 # Daftarkan repositori menggunakan signed-by
-echo "deb [signed-by=/etc/apt/keyrings/custom-repo.gpg] http://repo.example.com/debian stable main" | sudo tee /etc/apt/sources.list.d/custom-repo.list
+echo "deb [signed-by=/etc/apt/keyrings/deps-oktanio.gpg] https://deps.oktanio.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-oktanio.list
 sudo apt update
 ```
 
@@ -201,13 +206,13 @@ gpg --detach-sign --armor repodata/repomd.xml
 *(Ini akan menghasilkan berkas `repodata/repomd.xml.asc`)*
 
 **Konfigurasi Client Fedora (Aman):**
-Ubah file `/etc/yum.repos.d/custom-repo.repo` menjadi:
+Ubah file `/etc/yum.repos.d/deps-oktanio.repo` menjadi:
 ```ini
-[custom-repo]
-name=Custom Fedora Repository
-baseurl=http://repo.example.com/fedora
+[deps-oktanio]
+name=Deps Oktanio Repository
+baseurl=https://deps.oktanio.dev/fedora
 enabled=1
 gpgcheck=1
-gpgkey=http://repo.example.com/public.key
+gpgkey=https://deps.oktanio.dev/public.key
 ```
 Ketika pertama kali dnf mendownload paket, dnf akan mengunduh kunci GPG dan memverifikasi integritas repositori serta paket di dalamnya.

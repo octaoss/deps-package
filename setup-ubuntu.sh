@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+REPO_URL="https://deps.oktanio.dev"
 REPO=${1:-/var/www/repo/debian}
 
 echo "=== Checking and installing dependencies ==="
@@ -62,5 +63,8 @@ touch "$REPO/dists/stable/main/binary-amd64/Packages"
 
 echo "==========================================="
 echo "Ubuntu/Debian repository structure is ready!"
+echo "To use this repository on clients, run:"
+echo "echo \"deb [trusted=yes] $REPO_URL/debian stable main\" | sudo tee /etc/apt/sources.list.d/custom-repo.list"
 echo "You can now run ./add-package-ubuntu.sh to add your first package."
 echo "==========================================="
+

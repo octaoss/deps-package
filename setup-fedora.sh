@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-
+REPO_URL="https://deps.oktanio.dev"
 REPO=${1:-/var/www/repo/fedora}
 
 echo "=== Checking and installing dependencies ==="
@@ -56,6 +56,13 @@ echo "Target directory: $REPO"
 
 mkdir -p "$REPO"
 
+cat <<EOF > "$REPO/deps-oktanio.repo"
+[deps-oktanio]
+name=Deps Oktanio Repository
+baseurl=$REPO_URL/fedora
+enabled=1
+gpgcheck=0
+EOF
 
 if [ -n "$CREATEREPO_CMD" ]; then
   echo "Initializing Fedora repository with $CREATEREPO_CMD..."
@@ -64,5 +71,7 @@ fi
 
 echo "==========================================="
 echo "Fedora repository structure is ready!"
+echo "A client configuration file has been created at $REPO/deps-oktanio.repo"
 echo "You can now run ./add-package-fedora.sh to add your first package."
 echo "==========================================="
+
