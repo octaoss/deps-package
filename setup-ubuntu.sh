@@ -1,20 +1,50 @@
 #!/bin/bash
 set -e
 
-# Repository directory path (can be customized)
 REPO=${1:-/var/www/repo/debian}
 
+echo "=== Checking and installing dependencies ==="
+DEPS_TO_INSTALL=()
+
+if ! command -v apt-ftparchive &>/dev/null; then
+  if command -v apt-get &>/dev/null; then
+    DEPS_TO_INSTALL+=("apt-utils")
+  else
+    echo "Warning: apt-ftparchive is missing and this system is not Debian/Ubuntu-based."
+    echo "Please install apt-ftparchive manually."
+  fi
+fi
+
+if ! command -v wget &>/dev/null; then
+  DEPS_TO_INSTALL+=("wget")
+fi
+
+if [ ${#DEPS_TO_INSTALL[@]} -ne 0 ]; then
+  echo "Installing required packages: ${DEPS_TO_INSTALL[*]}"
+  if command -v apt-get &>/dev/null; then
+    sudo apt-get update && sudo apt-get install -y "${DEPS_TO_INSTALL[@]}"
+  elif command -v dnf &>/dev/null; then
+    sudo dnf install -y "${DEPS_TO_INSTALL[@]}"
+  elif command -v yum &>/dev/null; then
+    sudo yum install -y "${DEPS_TO_INSTALL[@]}"
+  else
+    echo "Could not detect package manager to install: ${DEPS_TO_INSTALL[*]}"
+    echo "Please install them manually."
+  fi
+else
+  echo "All dependencies (apt-ftparchive, wget) are already installed."
+fi
+
 echo "=== Setting up Ubuntu/Debian Repository ==="
+
 echo "Target directory: $REPO"
 
-# Create required directories
 mkdir -p "$REPO/pool/main"
 mkdir -p "$REPO/dists/stable/main/binary-amd64"
 mkdir -p "$REPO/conf"
 
-# Create release.conf if it does not exist
 if [ ! -f "$REPO/conf/release.conf" ]; then
-  cat <<EOF > "$REPO/conf/release.conf"
+  cat <<EOF >"$REPO/conf/release.conf"
 APT::FTPArchive::Release::Origin "Custom Linux Repository";
 APT::FTPArchive::Release::Label "Custom Linux Repository";
 APT::FTPArchive::Release::Suite "stable";
@@ -28,7 +58,6 @@ else
   echo "Configuration file already exists: $REPO/conf/release.conf"
 fi
 
-# Create dummy Packages file if not exists to avoid empty listing errors
 touch "$REPO/dists/stable/main/binary-amd64/Packages"
 
 echo "==========================================="

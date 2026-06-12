@@ -1,29 +1,61 @@
 #!/bin/bash
 set -e
 
-# Repository directory path (can be customized)
+
 REPO=${1:-/var/www/repo/fedora}
 
-echo "=== Setting up Fedora Repository ==="
-echo "Target directory: $REPO"
+echo "=== Checking and installing dependencies ==="
+DEPS_TO_INSTALL=()
+CREATEREPO_PKG=""
 
-# Create target directory
-mkdir -p "$REPO"
+if ! command -v createrepo_c &> /dev/null && ! command -v createrepo &> /dev/null; then
+  if command -v dnf &> /dev/null || command -v yum &> /dev/null; then
+    CREATEREPO_PKG="createrepo_c"
+  elif command -v apt-get &> /dev/null; then
+    CREATEREPO_PKG="createrepo"
+  else
+    echo "Warning: Neither createrepo_c nor createrepo is installed, and package manager is unknown."
+  fi
+fi
 
-# Check if createrepo_c or createrepo is installed
+if [ -n "$CREATEREPO_PKG" ]; then
+  DEPS_TO_INSTALL+=("$CREATEREPO_PKG")
+fi
+
+if ! command -v wget &> /dev/null; then
+  DEPS_TO_INSTALL+=("wget")
+fi
+
+if [ ${#DEPS_TO_INSTALL[@]} -ne 0 ]; then
+  echo "Installing required packages: ${DEPS_TO_INSTALL[*]}"
+  if command -v dnf &> /dev/null; then
+    sudo dnf install -y "${DEPS_TO_INSTALL[@]}"
+  elif command -v yum &> /dev/null; then
+    sudo yum install -y "${DEPS_TO_INSTALL[@]}"
+  elif command -v apt-get &> /dev/null; then
+    sudo apt-get update && sudo apt-get install -y "${DEPS_TO_INSTALL[@]}"
+  else
+    echo "Could not detect package manager to install: ${DEPS_TO_INSTALL[*]}"
+    echo "Please install them manually."
+  fi
+else
+  echo "All dependencies (createrepo, wget) are already installed."
+fi
+
+
 CREATEREPO_CMD=""
 if command -v createrepo_c &> /dev/null; then
   CREATEREPO_CMD="createrepo_c"
 elif command -v createrepo &> /dev/null; then
   CREATEREPO_CMD="createrepo"
-else
-  echo "Warning: 'createrepo_c' or 'createrepo' is not installed."
-  echo "Please install it using your package manager:"
-  echo "  - Fedora/RHEL: sudo dnf install createrepo_c"
-  echo "  - Ubuntu/Debian: sudo apt install createrepo"
-  echo ""
-  echo "Initializing directory structure anyway. You'll need to run createrepo manually once installed."
 fi
+
+echo "=== Setting up Fedora Repository ==="
+echo "Target directory: $REPO"
+
+
+mkdir -p "$REPO"
+
 
 if [ -n "$CREATEREPO_CMD" ]; then
   echo "Initializing Fedora repository with $CREATEREPO_CMD..."
