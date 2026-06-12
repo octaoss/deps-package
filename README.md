@@ -68,7 +68,7 @@ Skrip ini secara otomatis akan:
 ## 2. Setup & Penggunaan Fedora Repository
 
 ### Prasyarat
-Untuk mengelola repositori Fedora, Anda memerlukan tool `createrepo_c` (atau `createrepo`). Jika belum terpasang, skrip setup akan menginstalnya secara otomatis menggunakan package manager sistem Anda.
+Untuk mengelola repositori Fedora, Anda memerlukan tool `createrepo_c` (atau `createrepo`). Jika belum terpasang, skrip setup akan menginstalnya secara otomatis menggunakan package manager sistem Anda (`createrepo-c` di Debian/Ubuntu).
 
 ### A. Setup Awal
 Jalankan skrip `setup-fedora.sh` untuk menginstal dependensi, membuat struktur direktori Fedora, menginisialisasi metadata repositori, serta membuat file konfigurasi client secara otomatis:

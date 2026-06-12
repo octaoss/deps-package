@@ -19,7 +19,7 @@ elif command -v createrepo &> /dev/null; then
   CREATEREPO_CMD="createrepo"
 else
   echo "Error: 'createrepo_c' or 'createrepo' is not installed."
-  echo "Please install it using: sudo dnf install createrepo_c (Fedora/RHEL) or sudo apt install createrepo (Ubuntu/Debian)"
+  echo "Please install it using: sudo dnf install createrepo_c (Fedora/RHEL) or sudo apt install createrepo-c (Ubuntu/Debian)"
   exit 1
 fi
 

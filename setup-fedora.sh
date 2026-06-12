@@ -12,7 +12,7 @@ if ! command -v createrepo_c &> /dev/null && ! command -v createrepo &> /dev/nul
   if command -v dnf &> /dev/null || command -v yum &> /dev/null; then
     CREATEREPO_PKG="createrepo_c"
   elif command -v apt-get &> /dev/null; then
-    CREATEREPO_PKG="createrepo"
+    CREATEREPO_PKG="createrepo-c"
   else
     echo "Warning: Neither createrepo_c nor createrepo is installed, and package manager is unknown."
   fi
