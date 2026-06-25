@@ -133,27 +133,24 @@ Setiap kali alur kerja rilis otomatis di atas dijalankan, sistem repositori pake
 
 ## Cara Pengguna Pakai (Client Installation)
 
-Setelah repositori Anda aktif di GitHub Pages (misalnya pada tautan `https://username.github.io/repo-name`), pengguna/client Anda dapat mendaftarkan repositori tersebut ke sistem mereka dan langsung memasang paket Anda dengan sangat mudah.
-
-> [!NOTE]
-> Ganti `username` dan `repo-name` pada perintah di bawah ini sesuai dengan nama akun GitHub dan nama repositori Anda.
+Setelah repositori Anda aktif di GitHub Pages pada tautan `https://octaoss.github.io/deps-package/`, pengguna/client Anda dapat mendaftarkan repositori tersebut ke sistem mereka dan langsung memasang paket Anda dengan sangat mudah.
 
 ### A. Cara Pasang di Ubuntu / Debian (APT)
 Jalankan perintah berikut di terminal komputer client:
 
 1. **Daftarkan Kunci Keamanan GPG (Jika Repositori Ditandatangani):**
    ```bash
-   curl -fsSL https://username.github.io/repo-name/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
+   curl -fsSL https://octaoss.github.io/deps-package/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
    ```
 
 2. **Tambahkan Repositori ke Daftar Sumber (Sources List):**
    * **Metode 1: Dengan Keamanan GPG (Sangat Direkomendasikan)**
      ```bash
-     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://username.github.io/repo-name/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://octaoss.github.io/deps-package/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
    * **Metode 2: Tanpa GPG (Menggunakan opsi bypass tepercaya)**
      ```bash
-     echo "deb [trusted=yes] https://username.github.io/repo-name/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [trusted=yes] https://octaoss.github.io/deps-package/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
 
 3. **Perbarui Cache dan Pasang Paket:**
@@ -169,7 +166,7 @@ Jalankan perintah berikut di terminal komputer client:
 
 1. **Unduh File Konfigurasi Repositori secara Otomatis:**
    ```bash
-   sudo curl -sL https://username.github.io/repo-name/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
+   sudo curl -sL https://octaoss.github.io/deps-package/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
    ```
 
 2. **Perbarui Cache dan Pasang Paket:**
