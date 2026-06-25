@@ -156,6 +156,11 @@ def generate_apt_repo(repo_owner, repo_name):
             arch_blocks[architecture] = []
         arch_blocks[architecture].append(block)
 
+    # Ensure standard architectures always exist to prevent 404s on multi-arch clients
+    for std_arch in ["amd64", "arm64", "i386", "all"]:
+        if std_arch not in arch_blocks:
+            arch_blocks[std_arch] = []
+
     # Distribute 'all' packages to other architectures
     if 'all' in arch_blocks:
         all_packages = arch_blocks['all']
@@ -165,12 +170,10 @@ def generate_apt_repo(repo_owner, repo_name):
 
     active_architectures = list(arch_blocks.keys())
     for arch, blocks in arch_blocks.items():
-        arch_dir = os.path.join(debian_dir, "dists/stable/main/binary-", arch)
-        # Fix path concat
         arch_dir = f"debian/dists/stable/main/binary-{arch}"
         os.makedirs(arch_dir, exist_ok=True)
         
-        packages_content = "\n\n".join(blocks) + "\n"
+        packages_content = "\n\n".join(blocks) + "\n" if blocks else ""
         
         # Write Packages
         with open(os.path.join(arch_dir, "Packages"), "w") as f:
