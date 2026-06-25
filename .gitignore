@@ -2,3 +2,10 @@
 packages_cache/
 temp_apt/
 temp_rpm/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
