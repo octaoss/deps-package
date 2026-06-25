@@ -1,0 +1,5 @@
+[deps-deps-package]
+name=Deps deps-package Repository
+baseurl=https://octaoss.github.io/deps-package/dependency/fedora
+enabled=1
+gpgcheck=0

@@ -4,111 +4,141 @@ import sys
 import subprocess
 import shutil
 import re
-import glob
+import urllib.request
+import urllib.parse
+import json
 import gzip
 import hashlib
 import xml.etree.ElementTree as ET
-import json
+
+# Define output directory as requested (folder dependenci)
+OUTPUT_DIR = "dependency"
 
 def sha256_checksum(data):
     return hashlib.sha256(data).hexdigest()
 
 def get_repo_info():
-    # Get repository owner and name from environment
-    repo = os.environ.get("GITHUB_REPOSITORY", "octaoss/deps-package")
-    parts = repo.split("/")
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return "octaoss", "deps-package"
-
-def download_packages():
-    print("=== Downloading packages from GitHub Releases ===")
-    
-    # Ensure temp directories exist and are clean
-    shutil.rmtree("temp_apt", ignore_errors=True)
-    shutil.rmtree("temp_rpm", ignore_errors=True)
-    os.makedirs("temp_apt", exist_ok=True)
-    os.makedirs("temp_rpm", exist_ok=True)
-    
+    # Attempt to get repo info from git remote
     try:
-        # Get list of all releases
         result = subprocess.run(
-            ["gh", "release", "list", "--limit", "100", "--json", "tagName"],
+            ["git", "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
             check=True
         )
-        releases = json.loads(result.stdout)
-        print(f"Found {len(releases)} releases.")
-    except Exception as e:
-        print(f"Error fetching releases: {e}")
-        return []
+        url = result.stdout.strip()
+        # Parse git url like git@github.com:owner/repo.git or https://github.com/owner/repo.git
+        match = re.search(r"github\.com[:/]([^/]+)/([^.]+)", url)
+        if match:
+            return match.group(1), match.group(2)
+    except Exception:
+        pass
+    return "octaoss", "deps-package"
 
-    downloaded_any = False
-    for release in releases:
-        tag = release["tagName"]
-        print(f"Checking assets for release: {tag}")
+def setup_environment():
+    # Create required directories
+    os.makedirs("packages_cache", exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    # Ensure packages_cache is in .gitignore
+    gitignore_content = "\npackages_cache/\ntemp_apt/\ntemp_rpm/\n"
+    if os.path.exists(".gitignore"):
+        with open(".gitignore", "r") as f:
+            content = f.read()
+        if "packages_cache/" not in content:
+            with open(".gitignore", "a") as f:
+                f.write(gitignore_content)
+    else:
+        with open(".gitignore", "w") as f:
+            f.write(gitignore_content)
+
+def download_file(url):
+    print(f"=== Downloading package from {url} ===")
+    parsed_url = urllib.parse.urlparse(url)
+    filename = os.path.basename(parsed_url.path)
+    
+    if not filename or not (filename.endswith(".deb") or filename.endswith(".rpm")):
+        print("Error: URL must point to a valid .deb or .rpm file.")
+        sys.exit(1)
         
-        # Download Debian packages
-        apt_dir = os.path.join("temp_apt", tag)
-        os.makedirs(apt_dir, exist_ok=True)
-        try:
-            subprocess.run(
-                ["gh", "release", "download", tag, "--pattern", "*.deb", "--dir", apt_dir],
-                check=True
-            )
-            # Remove directory if empty
-            if not os.listdir(apt_dir):
-                os.rmdir(apt_dir)
-            else:
-                downloaded_any = True
-                print(f"Downloaded Debian packages for {tag}")
-        except subprocess.CalledProcessError:
-            os.rmdir(apt_dir)
-            
-        # Download RPM packages
-        rpm_dir = os.path.join("temp_rpm", tag)
-        os.makedirs(rpm_dir, exist_ok=True)
-        try:
-            subprocess.run(
-                ["gh", "release", "download", tag, "--pattern", "*.rpm", "--dir", rpm_dir],
-                check=True
-            )
-            # Remove directory if empty
-            if not os.listdir(rpm_dir):
-                os.rmdir(rpm_dir)
-            else:
-                downloaded_any = True
-                print(f"Downloaded RPM packages for {tag}")
-        except subprocess.CalledProcessError:
-            os.rmdir(rpm_dir)
-            
-    return downloaded_any
+    target_path = os.path.join("packages_cache", filename)
+    
+    # Download with progress indicator
+    def reporthook(blocknum, blocksize, totalsize):
+        readdata = blocknum * blocksize
+        if totalsize > 0:
+            percent = readdata * 1e2 / totalsize
+            s = f"\rDownloading: {percent:5.1f}% [{readdata} / {totalsize} bytes]"
+            sys.stdout.write(s)
+            sys.stdout.flush()
+        else:
+            sys.stdout.write(f"\rDownloading: {readdata} bytes")
+            sys.stdout.flush()
 
-def generate_apt_repo(repo_owner, repo_name):
+    try:
+        urllib.request.urlretrieve(url, target_path, reporthook)
+        print("\nDownload completed successfully.")
+    except Exception as e:
+        print(f"\nError downloading file: {e}")
+        sys.exit(1)
+        
+    return filename, target_path
+
+def update_packages_json(filename, url):
+    json_path = "packages.json"
+    data = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+            
+    data[filename] = url
+    
+    with open(json_path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"Updated packages.json mapping for {filename}")
+    return data
+
+def generate_apt_repo(repo_owner, repo_name, packages_map):
     print("=== Generating APT Repository ===")
     
-    # Ensure debian structure exists
-    debian_dir = "debian"
+    debian_dir = os.path.join(OUTPUT_DIR, "debian")
     shutil.rmtree(debian_dir, ignore_errors=True)
     os.makedirs(debian_dir, exist_ok=True)
     
-    # Check if we have any debian packages
-    deb_files = glob.glob("temp_apt/**/*.deb", recursive=True)
+    # Check if we have any debian packages in cache
+    deb_files = [f for f in os.listdir("packages_cache") if f.endswith(".deb")]
     if not deb_files:
-        print("No Debian packages found.")
+        print("No Debian packages in cache.")
         return []
 
+    # Copy cached deb files to a temporary directory for scanning
+    temp_apt = "temp_apt"
+    shutil.rmtree(temp_apt, ignore_errors=True)
+    os.makedirs(temp_apt, exist_ok=True)
+    
+    for f in deb_files:
+        shutil.copy2(os.path.join("packages_cache", f), os.path.join(temp_apt, f))
+
     # Run apt-ftparchive to scan packages
+    if not shutil.which("apt-ftparchive"):
+        print("Error: 'apt-ftparchive' is not installed.")
+        print("Please install it using: sudo apt install apt-utils")
+        shutil.rmtree(temp_apt, ignore_errors=True)
+        sys.exit(1)
+
     try:
         result = subprocess.run(
-            ["apt-ftparchive", "packages", "temp_apt"],
+            ["apt-ftparchive", "packages", temp_apt],
             capture_output=True,
             text=True,
             check=True
         )
     except Exception as e:
         print(f"Error running apt-ftparchive: {e}")
+        shutil.rmtree(temp_apt, ignore_errors=True)
         return []
 
     blocks = result.stdout.strip().split("\n\n")
@@ -119,7 +149,6 @@ def generate_apt_repo(repo_owner, repo_name):
         if not block.strip():
             continue
             
-        # Extract metadata
         pkg_name = re.search(r"^Package:\s*(.*)$", block, re.MULTILINE)
         version = re.search(r"^Version:\s*(.*)$", block, re.MULTILINE)
         arch = re.search(r"^Architecture:\s*(.*)$", block, re.MULTILINE)
@@ -133,14 +162,18 @@ def generate_apt_repo(repo_owner, repo_name):
         architecture = arch.group(1).strip()
         description = desc.group(1).strip() if desc else ""
         
-        # Replace relative Filename with absolute GitHub Release URL
-        # Filename format: temp_apt/<tag>/<filename>.deb
-        filename_match = re.search(r"^Filename:\s*(temp_apt/([^/]+)/([^/\n]+))$", block, re.MULTILINE)
+        # Replace relative Filename with the absolute URL from packages_map
+        filename_match = re.search(r"^Filename:\s*(temp_apt/([^/\n]+))$", block, re.MULTILINE)
         if filename_match:
             full_match_str = filename_match.group(1)
-            tag = filename_match.group(2)
-            filename = filename_match.group(3)
-            absolute_url = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{tag}/{filename}"
+            filename = filename_match.group(2)
+            
+            # Retrieve absolute URL
+            absolute_url = packages_map.get(filename)
+            if not absolute_url:
+                print(f"Warning: URL for {filename} not found in packages.json, skipping.")
+                continue
+                
             block = block.replace(f"Filename: {full_match_str}", f"Filename: {absolute_url}")
             
             parsed_packages.append({
@@ -170,7 +203,7 @@ def generate_apt_repo(repo_owner, repo_name):
 
     active_architectures = list(arch_blocks.keys())
     for arch, blocks in arch_blocks.items():
-        arch_dir = f"debian/dists/stable/main/binary-{arch}"
+        arch_dir = os.path.join(debian_dir, f"dists/stable/main/binary-{arch}")
         os.makedirs(arch_dir, exist_ok=True)
         
         packages_content = "\n\n".join(blocks) + "\n" if blocks else ""
@@ -209,6 +242,7 @@ APT::FTPArchive::Release::Description "Repository for custom Debian/Ubuntu packa
             f.write(release_result.stdout)
     except Exception as e:
         print(f"Error generating Release file: {e}")
+        shutil.rmtree(temp_apt, ignore_errors=True)
         return parsed_packages
 
     # Sign Release if GPG key is present
@@ -225,35 +259,37 @@ APT::FTPArchive::Release::Description "Repository for custom Debian/Ubuntu packa
         )
         print("Successfully signed APT repository.")
     except Exception as e:
-        print("GPG signing skipped or failed (GPG key may not be configured):", e)
+        print("GPG signing skipped or failed (GPG key may not be configured locally):", e)
 
+    shutil.rmtree(temp_apt, ignore_errors=True)
     return parsed_packages
 
-def generate_rpm_repo(repo_owner, repo_name):
+def generate_rpm_repo(repo_owner, repo_name, packages_map):
     print("=== Generating RPM Repository ===")
     
-    fedora_dir = "fedora"
+    fedora_dir = os.path.join(OUTPUT_DIR, "fedora")
     shutil.rmtree(fedora_dir, ignore_errors=True)
     os.makedirs(fedora_dir, exist_ok=True)
     
-    # Gather RPMs and build tag mapping
-    rpm_to_tag = {}
-    rpm_files = glob.glob("temp_rpm/**/*.rpm", recursive=True)
-    
+    # Check if we have any RPM packages in cache
+    rpm_files = [f for f in os.listdir("packages_cache") if f.endswith(".rpm")]
     if not rpm_files:
-        print("No RPM packages found.")
+        print("No RPM packages in cache.")
         return []
 
-    # Copy all RPMs to fedora/ so createrepo_c can analyze them
-    for rpm_path in rpm_files:
-        parts = rpm_path.split(os.sep)
-        if len(parts) >= 3:
-            tag = parts[-2]
-            filename = parts[-1]
-            rpm_to_tag[filename] = tag
-            shutil.copy2(rpm_path, os.path.join(fedora_dir, filename))
+    # Copy cached RPMs to fedora/ temporarily so createrepo_c can analyze them
+    for f in rpm_files:
+        shutil.copy2(os.path.join("packages_cache", f), os.path.join(fedora_dir, f))
 
     # Run createrepo_c
+    if not shutil.which("createrepo_c"):
+        print("Error: 'createrepo_c' is not installed.")
+        print("Please install it using: sudo apt install createrepo-c (Debian/Ubuntu) or sudo dnf install createrepo_c (Fedora)")
+        # Clean up copied files
+        for f in rpm_files:
+            os.remove(os.path.join(fedora_dir, f))
+        sys.exit(1)
+
     try:
         subprocess.run(["createrepo_c", "--no-database", fedora_dir], check=True)
     except Exception as e:
@@ -298,12 +334,9 @@ def generate_rpm_repo(repo_owner, repo_name):
             
         xml_str = xml_content.decode("utf-8")
         
-        # Extract metadata for the landing page (only once, from primary.xml)
+        # Extract metadata for the landing page
         if data_type == "primary":
-            # Simple parse of package names, versions, architectures
-            # Since primary.xml is small and well-structured, we can extract them
             try:
-                # Parse temporary ET to get package list
                 temp_root = ET.fromstring(xml_content)
                 temp_ns = {
                     "common": "http://linux.duke.edu/metadata/common",
@@ -323,15 +356,13 @@ def generate_rpm_repo(repo_owner, repo_name):
                             pkg_ver += f"-{ver_elem.get('rel')}"
                         pkg_desc = desc_elem.text if desc_elem is not None else ""
                         
-                        # Find filename
                         rpm_filename = None
                         loc_elem = pkg_elem.find("common:location", temp_ns)
                         if loc_elem is not None:
                             rpm_filename = os.path.basename(loc_elem.get("href"))
                             
-                        if rpm_filename and rpm_filename in rpm_to_tag:
-                            tag = rpm_to_tag[rpm_filename]
-                            absolute_url = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{tag}/{rpm_filename}"
+                        if rpm_filename and rpm_filename in packages_map:
+                            absolute_url = packages_map[rpm_filename]
                             parsed_packages.append({
                                 "name": pkg_name,
                                 "version": pkg_ver,
@@ -343,10 +374,12 @@ def generate_rpm_repo(repo_owner, repo_name):
             except Exception as ex:
                 print(f"Error parsing primary XML for landing page: {ex}")
         
-        # Replace relative href with absolute URL
-        for filename, tag in rpm_to_tag.items():
+        # Replace relative href with absolute URL from packages_map
+        for filename, absolute_url in packages_map.items():
+            if not filename.endswith(".rpm"):
+                continue
             old_href = f'href="{filename}"'
-            new_href = f'href="https://github.com/{repo_owner}/{repo_name}/releases/download/{tag}/{filename}"'
+            new_href = f'href="{absolute_url}"'
             xml_str = xml_str.replace(old_href, new_href)
             
         modified_xml_content = xml_str.encode("utf-8")
@@ -398,9 +431,9 @@ def generate_rpm_repo(repo_owner, repo_name):
     except Exception as e:
         print("GPG signing for RPM skipped or failed:", e)
 
-    # Clean up RPM files so we don't commit them to git
-    for filename in rpm_to_tag.keys():
-        rpm_path = os.path.join(fedora_dir, filename)
+    # Clean up RPM files from fedora/ so we don't keep them there
+    for f in rpm_files:
+        rpm_path = os.path.join(fedora_dir, f)
         if os.path.exists(rpm_path):
             os.remove(rpm_path)
 
@@ -426,10 +459,11 @@ def export_public_key():
                     
         if key_id:
             print(f"Found key ID: {key_id}")
-            with open("public.key", "w") as f:
+            key_path = os.path.join(OUTPUT_DIR, "public.key")
+            with open(key_path, "w") as f:
                 subprocess.run(["gpg", "--export", "--armor", key_id], stdout=f, check=True)
-            shutil.copy2("public.key", "debian/public.key")
-            shutil.copy2("public.key", "fedora/public.key")
+            shutil.copy2(key_path, os.path.join(OUTPUT_DIR, "debian/public.key"))
+            shutil.copy2(key_path, os.path.join(OUTPUT_DIR, "fedora/public.key"))
             print("Public key exported successfully.")
             return True
         else:
@@ -440,9 +474,8 @@ def export_public_key():
 
 def generate_client_configs(repo_owner, repo_name, has_gpg):
     print("=== Generating Client Configurations ===")
-    repo_url = os.environ.get("REPO_URL", f"https://{repo_owner}.github.io/{repo_name}")
+    repo_url = f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
     
-    # Generate Yum/Dnf .repo file
     repo_content = f"""[deps-{repo_name}]
 name=Deps {repo_name} Repository
 baseurl={repo_url}/fedora
@@ -458,16 +491,16 @@ gpgcheck=1
 gpgkey={repo_url}/public.key
 """
     
-    # Write both standard names
-    with open("fedora/deps-oktanio.repo", "w") as f:
+    fedora_dir = os.path.join(OUTPUT_DIR, "fedora")
+    with open(os.path.join(fedora_dir, "deps-package.repo"), "w") as f:
         f.write(repo_content)
-    with open(f"fedora/deps-{repo_name}.repo", "w") as f:
+    with open(os.path.join(fedora_dir, f"deps-{repo_name}.repo"), "w") as f:
         f.write(repo_content)
     print("Generated client configurations.")
 
 def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
     print("=== Generating Landing Page ===")
-    repo_url = os.environ.get("REPO_URL", f"https://{repo_owner}.github.io/{repo_name}")
+    repo_url = f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
     
     # Sort packages by name
     packages = sorted(packages, key=lambda x: x["name"])
@@ -901,22 +934,24 @@ sudo dnf install &lt;package-name&gt;</pre>
 </body>
 </html>
 """
-    with open("index.html", "w") as f:
+    landing_path = os.path.join(OUTPUT_DIR, "index.html")
+    with open(landing_path, "w") as f:
         f.write(html_content)
     print("Generated landing page index.html successfully.")
+
 def generate_autoindexes():
     print("=== Generating Autoindexes (Directory Browsers) ===")
-    for base_dir in ["debian", "fedora"]:
+    base_dirs = [os.path.join(OUTPUT_DIR, "debian"), os.path.join(OUTPUT_DIR, "fedora")]
+    for base_dir in base_dirs:
         if not os.path.exists(base_dir):
             continue
             
         for root, dirs, files in os.walk(base_dir):
             normalized_root = os.path.normpath(root)
             
-            # Generate directory listing
             item_list = []
             
-            # Parent directory link (only if we are not in the base_dir itself)
+            # Parent directory link
             if normalized_root != base_dir:
                 item_list.append({
                     "name": "..",
@@ -943,7 +978,6 @@ def generate_autoindexes():
                 file_path = os.path.join(normalized_root, f)
                 size_bytes = os.path.getsize(file_path)
                 
-                # Format size
                 if size_bytes < 1024:
                     size_str = f"{size_bytes} B"
                 elif size_bytes < 1024 * 1024:
@@ -958,7 +992,6 @@ def generate_autoindexes():
                     "url": f
                 })
                 
-            # Generate HTML for items
             items_html = ""
             for item in item_list:
                 icon = "📁" if item["is_dir"] else "📄"
@@ -969,15 +1002,16 @@ def generate_autoindexes():
                     <td class="size">{item["size"]}</td>
                 </tr>"""
                 
-            # Path breadcrumbs for title/header
             display_path = normalized_root.replace("\\", "/")
+            # Strip output dir from display path for cleaner browser title
+            display_path_clean = display_path.replace(f"{OUTPUT_DIR}/", "")
             
             html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Index of /{display_path}</title>
+    <title>Index of /{display_path_clean}</title>
     <style>
         body {{
             background-color: #0b0f19;
@@ -1056,7 +1090,7 @@ def generate_autoindexes():
 </head>
 <body>
     <div class="container">
-        <h1>Index of /{display_path}</h1>
+        <h1>Index of /{display_path_clean}</h1>
         <table>
             <thead>
                 <tr>
@@ -1080,40 +1114,52 @@ def generate_autoindexes():
     print("Autoindexes generated successfully.")
 
 def main():
+    if len(sys.argv) < 2:
+        print("Usage: python3 add_package.py <DIRECT_URL_TO_DEB_OR_RPM>")
+        print("Example: python3 add_package.py https://github.com/octaoss/deps-package/releases/download/v1.0.0/octanopilot_1.0.0_amd64.deb")
+        sys.exit(1)
+        
+    package_url = sys.argv[1]
+    
+    # 1. Initialize environment (gitignore, directories)
+    setup_environment()
+    
+    # 2. Download package to local cache
+    filename, file_path = download_file(package_url)
+    
+    # 3. Update packages.json mapping
+    packages_map = update_packages_json(filename, package_url)
+    
+    # 4. Get Repo Metadata
     repo_owner, repo_name = get_repo_info()
     print(f"Repository: {repo_owner}/{repo_name}")
     
-    # Download packages
-    has_packages = download_packages()
-    if not has_packages:
-        print("No packages downloaded. Exiting.")
-        # Create empty index.html so pages deployment doesn't fail
-        generate_landing_page(repo_owner, repo_name, [], False)
-        return
-        
-    # Export public key if GPG is configured
+    # 5. Export GPG public key if available
     has_gpg = export_public_key()
     
-    # Generate repositories
-    apt_packages = generate_apt_repo(repo_owner, repo_name)
-    rpm_packages = generate_rpm_repo(repo_owner, repo_name)
+    # 6. Generate repos based on cache content
+    apt_packages = generate_apt_repo(repo_owner, repo_name, packages_map)
+    rpm_packages = generate_rpm_repo(repo_owner, repo_name, packages_map)
     
-    # Combine package lists
+    # 7. Combine lists
     all_packages = apt_packages + rpm_packages
     
-    # Generate client configurations
+    # 8. Generate configurations & landing page
     generate_client_configs(repo_owner, repo_name, has_gpg)
-    
-    # Generate index.html landing page
     generate_landing_page(repo_owner, repo_name, all_packages, has_gpg)
     
-    # Generate autoindexes for all directories to act as a file browser and prevent 404s
+    # 9. Generate file browsers/autoindexes
     generate_autoindexes()
     
-    # Clean up temp directories
-    shutil.rmtree("temp_apt", ignore_errors=True)
-    shutil.rmtree("temp_rpm", ignore_errors=True)
-    print("=== Repository update completed successfully! ===")
+    print("\n" + "="*50)
+    print("SUCCESS: Package successfully added to repository!")
+    print(f"Repository files are generated inside the '{OUTPUT_DIR}' folder.")
+    print("="*50)
+    print("\nTo publish these changes to your GitHub Pages site, run:")
+    print("git add .")
+    print(f"git commit -m \"Add package {filename}\"")
+    print("git push")
+    print("="*50)
 
 if __name__ == "__main__":
     main()
