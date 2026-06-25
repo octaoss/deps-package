@@ -10,7 +10,7 @@ Depends: ca-certificates, libasound2 (>= 1.0.17), libatk-bridge2.0-0 (>= 2.5.3),
 Recommends: libvulkan1
 Conflicts: visual-studio-octanopilot
 Replaces: visual-studio-octanopilot
-Filename: https://github.com/octaoss/nopilot/releases/download/v1.95.2/octanopilot_1.95.2-1780733287_amd64.deb
+Filename: pool/main/octanopilot_1.95.2-1780733287_amd64.deb
 Size: 114384572
 MD5sum: da19c378d7eaa0be44a3d6960a9350ef
 SHA1: ce07ac3cf1d5aa945e813328f27dcf0b86dc44df

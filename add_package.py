@@ -14,6 +14,10 @@ import xml.etree.ElementTree as ET
 # Define output directory (set to "." to write directly to the workspace root)
 OUTPUT_DIR = "."
 
+# Custom domain for the repository (e.g., "https://deps.oktanio.dev" or "https://deps-package.pages.dev").
+# If set to None, it will default to "https://<repo_name>.pages.dev" (Cloudflare Pages).
+CUSTOM_DOMAIN = None
+
 def sha256_checksum(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -27,7 +31,6 @@ def get_repo_info():
             check=True
         )
         url = result.stdout.strip()
-        # Parse git url like git@github.com:owner/repo.git or https://github.com/owner/repo.git
         match = re.search(r"github\.com[:/]([^/]+)/([^.]+)", url)
         if match:
             return match.group(1), match.group(2)
@@ -35,16 +38,25 @@ def get_repo_info():
         pass
     return "octaoss", "deps-package"
 
+def get_repo_url(repo_owner, repo_name):
+    if CUSTOM_DOMAIN:
+        return CUSTOM_DOMAIN.rstrip("/")
+    if os.environ.get("REPO_URL"):
+        return os.environ.get("REPO_URL").rstrip("/")
+    
+    url = f"https://{repo_name}.pages.dev"
+    if OUTPUT_DIR != ".":
+        url = f"{url}/{OUTPUT_DIR}"
+    return url
+
 def setup_environment():
-    # Create required directories
+    # Create required directories (we only write metadata to debian/fedora, binaries stay in cache)
     os.makedirs("packages_cache", exist_ok=True)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(os.path.join(OUTPUT_DIR, "debian"), exist_ok=True)
+    os.makedirs(os.path.join(OUTPUT_DIR, "fedora"), exist_ok=True)
     
-    # Create .nojekyll in output directory to bypass Jekyll if deploying via branch
-    with open(os.path.join(OUTPUT_DIR, ".nojekyll"), "w") as f:
-        f.write("")
-    
-    # Ensure packages_cache is in .gitignore
+    # Ensure packages_cache, temp dirs, and actual binaries inside debian/fedora are ignored by Git
+    # Wait, we don't put binaries in debian/fedora anymore! They stay in packages_cache which is ignored!
     gitignore_content = "\npackages_cache/\ntemp_apt/\ntemp_rpm/\n"
     if os.path.exists(".gitignore"):
         with open(".gitignore", "r") as f:
@@ -57,7 +69,6 @@ def setup_environment():
             f.write(gitignore_content)
 
 def download_file(url):
-    print(f"=== Downloading package from {url} ===")
     parsed_url = urllib.parse.urlparse(url)
     filename = os.path.basename(parsed_url.path)
     
@@ -66,6 +77,12 @@ def download_file(url):
         sys.exit(1)
         
     target_path = os.path.join("packages_cache", filename)
+    
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 0:
+        print(f"=== Package {filename} already exists in cache, skipping download ===")
+        return filename, target_path
+        
+    print(f"=== Downloading package from {url} ===")
     
     # Download with progress indicator
     def reporthook(blocknum, blocksize, totalsize):
@@ -105,6 +122,26 @@ def update_packages_json(filename, url):
     print(f"Updated packages.json mapping for {filename}")
     return data
 
+def generate_redirects_file(packages_map):
+    print("=== Generating Cloudflare/Netlify _redirects file ===")
+    # Generates a standard _redirects file for Cloudflare Pages/Netlify
+    redirects_path = os.path.join(OUTPUT_DIR, "_redirects")
+    redirects_content = []
+    
+    # Sort keys for consistent file output
+    for filename in sorted(packages_map.keys()):
+        url = packages_map[filename]
+        if filename.endswith(".deb"):
+            # Redirect /debian/pool/main/filename.deb -> absolute URL
+            redirects_content.append(f"/debian/pool/main/{filename} {url} 302")
+        elif filename.endswith(".rpm"):
+            # Redirect /fedora/filename.rpm -> absolute URL
+            redirects_content.append(f"/fedora/{filename} {url} 302")
+            
+    with open(redirects_path, "w") as f:
+        f.write("\n".join(redirects_content) + "\n")
+    print("Generated _redirects file successfully.")
+
 def generate_apt_repo(repo_owner, repo_name, packages_map):
     print("=== Generating APT Repository ===")
     
@@ -134,8 +171,15 @@ def generate_apt_repo(repo_owner, repo_name, packages_map):
         sys.exit(1)
 
     try:
+        # Run apt-ftparchive packages pool from the debian/ directory to generate relative pool/ paths
+        # We temporarily place the files under temp_apt/pool/main so apt-ftparchive sees pool/main/
+        os.makedirs(os.path.join(temp_apt, "pool/main"), exist_ok=True)
+        for f in deb_files:
+            shutil.move(os.path.join(temp_apt, f), os.path.join(temp_apt, "pool/main", f))
+            
         result = subprocess.run(
-            ["apt-ftparchive", "packages", temp_apt],
+            ["apt-ftparchive", "packages", "pool"],
+            cwd=temp_apt,
             capture_output=True,
             text=True,
             check=True
@@ -148,6 +192,7 @@ def generate_apt_repo(repo_owner, repo_name, packages_map):
     blocks = result.stdout.strip().split("\n\n")
     arch_blocks = {}
     parsed_packages = []
+    repo_url = get_repo_url(repo_owner, repo_name)
 
     for block in blocks:
         if not block.strip():
@@ -157,37 +202,29 @@ def generate_apt_repo(repo_owner, repo_name, packages_map):
         version = re.search(r"^Version:\s*(.*)$", block, re.MULTILINE)
         arch = re.search(r"^Architecture:\s*(.*)$", block, re.MULTILINE)
         desc = re.search(r"^Description:\s*(.*)$", block, re.MULTILINE)
+        filename_match = re.search(r"^Filename:\s*(.*)$", block, re.MULTILINE)
         
-        if not (pkg_name and version and arch):
+        if not (pkg_name and version and arch and filename_match):
             continue
             
         pkg = pkg_name.group(1).strip()
         ver = version.group(1).strip()
         architecture = arch.group(1).strip()
         description = desc.group(1).strip() if desc else ""
+        rel_filename = filename_match.group(1).strip()
+        filename_base = os.path.basename(rel_filename)
         
-        # Replace relative Filename with the absolute URL from packages_map
-        filename_match = re.search(r"^Filename:\s*(temp_apt/([^/\n]+))$", block, re.MULTILINE)
-        if filename_match:
-            full_match_str = filename_match.group(1)
-            filename = filename_match.group(2)
-            
-            # Retrieve absolute URL
-            absolute_url = packages_map.get(filename)
-            if not absolute_url:
-                print(f"Warning: URL for {filename} not found in packages.json, skipping.")
-                continue
-                
-            block = block.replace(f"Filename: {full_match_str}", f"Filename: {absolute_url}")
-            
-            parsed_packages.append({
-                "name": pkg,
-                "version": ver,
-                "architecture": architecture,
-                "description": description,
-                "type": "deb",
-                "url": absolute_url
-            })
+        # Absolute URL for landing page will be resolved via redirect
+        absolute_url = f"{repo_url}/debian/{rel_filename}"
+        
+        parsed_packages.append({
+            "name": pkg,
+            "version": ver,
+            "architecture": architecture,
+            "description": description,
+            "type": "deb",
+            "url": absolute_url
+        })
             
         if architecture not in arch_blocks:
             arch_blocks[architecture] = []
@@ -300,7 +337,7 @@ def generate_rpm_repo(repo_owner, repo_name, packages_map):
         print(f"Error running createrepo_c: {e}")
         return []
 
-    # Post-process YUM metadata to point to absolute URLs
+    # Parse metadata to build package list for landing page
     repodata_dir = os.path.join(fedora_dir, "repodata")
     repomd_path = os.path.join(repodata_dir, "repomd.xml")
     
@@ -308,121 +345,64 @@ def generate_rpm_repo(repo_owner, repo_name, packages_map):
         print("repomd.xml not generated!")
         return []
 
-    # Parse and modify XML files
     tree = ET.parse(repomd_path)
     root = tree.getroot()
-    
     ns = {"repo": "http://linux.duke.edu/metadata/repo"}
-    ET.register_namespace("", "http://linux.duke.edu/metadata/repo")
     
     parsed_packages = []
+    repo_url = get_repo_url(repo_owner, repo_name)
     
     for data_elem in root.findall("repo:data", ns):
         data_type = data_elem.get("type")
-        if data_type not in ["primary", "filelists", "other"]:
+        if data_type != "primary":
             continue
             
         location_elem = data_elem.find("repo:location", ns)
         if location_elem is None:
             continue
             
-        relative_href = location_elem.get("href")
-        gz_path = os.path.join(fedora_dir, relative_href)
-        
+        gz_path = os.path.join(fedora_dir, location_elem.get("href"))
         if not os.path.exists(gz_path):
             continue
             
-        # Read and decompress
+        # Read and parse primary XML to gather package info
         with gzip.open(gz_path, "rb") as f:
             xml_content = f.read()
             
-        xml_str = xml_content.decode("utf-8")
-        
-        # Extract metadata for the landing page
-        if data_type == "primary":
-            try:
-                temp_root = ET.fromstring(xml_content)
-                temp_ns = {
-                    "common": "http://linux.duke.edu/metadata/common",
-                    "rpm": "http://linux.duke.edu/metadata/rpm"
-                }
-                for pkg_elem in temp_root.findall(".//common:package", temp_ns):
-                    name_elem = pkg_elem.find("common:name", temp_ns)
-                    arch_elem = pkg_elem.find("common:arch", temp_ns)
-                    ver_elem = pkg_elem.find("common:version", temp_ns)
-                    desc_elem = pkg_elem.find("common:description", temp_ns)
+        try:
+            temp_root = ET.fromstring(xml_content)
+            temp_ns = {
+                "common": "http://linux.duke.edu/metadata/common",
+                "rpm": "http://linux.duke.edu/metadata/rpm"
+            }
+            for pkg_elem in temp_root.findall(".//common:package", temp_ns):
+                name_elem = pkg_elem.find("common:name", temp_ns)
+                arch_elem = pkg_elem.find("common:arch", temp_ns)
+                ver_elem = pkg_elem.find("common:version", temp_ns)
+                desc_elem = pkg_elem.find("common:description", temp_ns)
+                loc_elem = pkg_elem.find("common:location", temp_ns)
+                
+                if name_elem is not None and ver_elem is not None and loc_elem is not None:
+                    pkg_name = name_elem.text
+                    pkg_arch = arch_elem.text if arch_elem is not None else "x86_64"
+                    pkg_ver = ver_elem.get("ver")
+                    if ver_elem.get("rel"):
+                        pkg_ver += f"-{ver_elem.get('rel')}"
+                    pkg_desc = desc_elem.text if desc_elem is not None else ""
+                    rel_rpm_path = loc_elem.get("href")
+                    filename_base = os.path.basename(rel_rpm_path)
                     
-                    if name_elem is not None and ver_elem is not None:
-                        pkg_name = name_elem.text
-                        pkg_arch = arch_elem.text if arch_elem is not None else "x86_64"
-                        pkg_ver = ver_elem.get("ver")
-                        if ver_elem.get("rel"):
-                            pkg_ver += f"-{ver_elem.get('rel')}"
-                        pkg_desc = desc_elem.text if desc_elem is not None else ""
-                        
-                        rpm_filename = None
-                        loc_elem = pkg_elem.find("common:location", temp_ns)
-                        if loc_elem is not None:
-                            rpm_filename = os.path.basename(loc_elem.get("href"))
-                            
-                        if rpm_filename and rpm_filename in packages_map:
-                            absolute_url = packages_map[rpm_filename]
-                            parsed_packages.append({
-                                "name": pkg_name,
-                                "version": pkg_ver,
-                                "architecture": pkg_arch,
-                                "description": pkg_desc,
-                                "type": "rpm",
-                                "url": absolute_url
-                            })
-            except Exception as ex:
-                print(f"Error parsing primary XML for landing page: {ex}")
-        
-        # Replace relative href with absolute URL from packages_map
-        for filename, absolute_url in packages_map.items():
-            if not filename.endswith(".rpm"):
-                continue
-            old_href = f'href="{filename}"'
-            new_href = f'href="{absolute_url}"'
-            xml_str = xml_str.replace(old_href, new_href)
-            
-        modified_xml_content = xml_str.encode("utf-8")
-        
-        # Compress again
-        temp_gz_path = gz_path + ".tmp"
-        with gzip.open(temp_gz_path, "wb") as f:
-            f.write(modified_xml_content)
-            
-        # Recalculate checksums and sizes
-        uncompressed_size = len(modified_xml_content)
-        uncompressed_sha = sha256_checksum(modified_xml_content)
-        
-        with open(temp_gz_path, "rb") as f:
-            compressed_content = f.read()
-        compressed_size = len(compressed_content)
-        compressed_sha = sha256_checksum(compressed_content)
-        
-        os.replace(temp_gz_path, gz_path)
-        
-        # Update repomd.xml elements
-        checksum_elem = data_elem.find("repo:checksum", ns)
-        if checksum_elem is not None:
-            checksum_elem.text = compressed_sha
-            
-        open_checksum_elem = data_elem.find("repo:open-checksum", ns)
-        if open_checksum_elem is not None:
-            open_checksum_elem.text = uncompressed_sha
-            
-        size_elem = data_elem.find("repo:size", ns)
-        if size_elem is not None:
-            size_elem.text = str(compressed_size)
-            
-        open_size_elem = data_elem.find("repo:open-size", ns)
-        if open_size_elem is not None:
-            open_size_elem.text = str(uncompressed_size)
-
-    # Save the updated repomd.xml
-    tree.write(repomd_path, encoding="utf-8", xml_declaration=True)
+                    absolute_url = f"{repo_url}/fedora/{rel_rpm_path}"
+                    parsed_packages.append({
+                        "name": pkg_name,
+                        "version": pkg_ver,
+                        "architecture": pkg_arch,
+                        "description": pkg_desc,
+                        "type": "rpm",
+                        "url": absolute_url
+                    })
+        except Exception as ex:
+            print(f"Error parsing primary XML for landing page: {ex}")
 
     # Sign repomd.xml if GPG key is present
     try:
@@ -488,7 +468,7 @@ def export_public_key():
 
 def generate_client_configs(repo_owner, repo_name, has_gpg):
     print("=== Generating Client Configurations ===")
-    repo_url = f"https://{repo_owner}.github.io/{repo_name}" if OUTPUT_DIR == "." else f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
+    repo_url = get_repo_url(repo_owner, repo_name)
     
     repo_content = f"""[deps-{repo_name}]
 name=Deps {repo_name} Repository
@@ -514,7 +494,7 @@ gpgkey={repo_url}/public.key
 
 def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
     print("=== Generating Landing Page ===")
-    repo_url = f"https://{repo_owner}.github.io/{repo_name}" if OUTPUT_DIR == "." else f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
+    repo_url = get_repo_url(repo_owner, repo_name)
     
     # Sort packages by name
     packages = sorted(packages, key=lambda x: x["name"])
@@ -1017,8 +997,9 @@ def generate_autoindexes():
                 </tr>"""
                 
             display_path = normalized_root.replace("\\", "/")
-            # Strip output dir from display path for cleaner browser title
-            display_path_clean = display_path.replace(f"{OUTPUT_DIR}/", "")
+            display_path_clean = display_path
+            if OUTPUT_DIR != ".":
+                display_path_clean = display_path.replace(f"{OUTPUT_DIR}/", "")
             
             html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1162,14 +1143,17 @@ def main():
     generate_client_configs(repo_owner, repo_name, has_gpg)
     generate_landing_page(repo_owner, repo_name, all_packages, has_gpg)
     
-    # 9. Generate file browsers/autoindexes
+    # 9. Generate redirects file for Cloudflare Pages/Netlify
+    generate_redirects_file(packages_map)
+    
+    # 10. Generate file browsers/autoindexes
     generate_autoindexes()
     
     print("\n" + "="*50)
     print("SUCCESS: Package successfully added to repository!")
-    print(f"Repository files are generated inside the '{OUTPUT_DIR}' folder.")
+    print(f"Repository files are generated in your workspace.")
     print("="*50)
-    print("\nTo publish these changes to your GitHub Pages site, run:")
+    print("\nTo publish these changes, run:")
     print("git add .")
     print(f"git commit -m \"Add package {filename}\"")
     print("git push")
