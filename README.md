@@ -63,8 +63,8 @@ git commit -m "Update repository: menambahkan paket terbaru"
 git push origin main
 ```
 
-Hubungkan repositori Anda ke **Cloudflare Pages** (gratis, selesai dalam 3 klik di dashboard Cloudflare). Setiap kali Anda melakukan `git push`, situs repositori Anda akan otomatis diperbarui. Halaman panduan interaktif dan daftar paket akan tersedia di tautan Cloudflare Pages Anda, misalnya:
-**`https://deps-package.pages.dev/`**
+Hubungkan repositori Anda ke platform deployment pilihan Anda (seperti Cloudflare Pages atau Cloudflare Workers). Setiap kali Anda melakukan `git push` dan mendeploy file statis ini, situs repositori Anda akan otomatis diperbarui. Halaman panduan interaktif dan daftar paket tersedia di tautan:
+**`https://deps-package.oktanio.workers.dev/`**
 
 ---
 
@@ -76,17 +76,17 @@ Jalankan perintah berikut di terminal komputer client:
 1. **Daftarkan Kunci Keamanan GPG (Jika Repositori Ditandatangani):**
    *(Jika Anda memiliki kunci GPG lokal, skrip otomatis akan menandatangani repositori dan mengekspor kunci publik Anda)*
    ```bash
-   curl -fsSL https://deps-package.pages.dev/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
+   curl -fsSL https://deps-package.oktanio.workers.dev/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
    ```
 
 2. **Tambahkan Repositori ke Daftar Sumber (Sources List):**
    * **Metode 1: Dengan Keamanan GPG (Sangat Direkomendasikan)**
      ```bash
-     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://deps-package.pages.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://deps-package.oktanio.workers.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
    * **Metode 2: Tanpa GPG (Menggunakan opsi bypass tepercaya)**
      ```bash
-     echo "deb [trusted=yes] https://deps-package.pages.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [trusted=yes] https://deps-package.oktanio.workers.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
 
 3. **Perbarui Cache dan Pasang Paket:**
@@ -102,7 +102,7 @@ Jalankan perintah berikut di terminal komputer client:
 
 1. **Unduh File Konfigurasi Repositori secara Otomatis:**
    ```bash
-   sudo curl -sL https://deps-package.pages.dev/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
+   sudo curl -sL https://deps-package.oktanio.workers.dev/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
    ```
 
 2. **Perbarui Cache dan Pasang Paket:**

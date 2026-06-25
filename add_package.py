@@ -16,7 +16,7 @@ OUTPUT_DIR = "."
 
 # Custom domain for the repository (e.g., "https://deps.oktanio.dev" or "https://deps-package.pages.dev").
 # If set to None, it will default to "https://<repo_name>.pages.dev" (Cloudflare Pages).
-CUSTOM_DOMAIN = None
+CUSTOM_DOMAIN = "https://deps-package.oktanio.workers.dev"
 
 def sha256_checksum(data):
     return hashlib.sha256(data).hexdigest()
