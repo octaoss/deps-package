@@ -441,6 +441,17 @@ def generate_rpm_repo(repo_owner, repo_name, packages_map):
 
 def export_public_key():
     print("=== Exporting GPG Public Key ===")
+    key_path = os.path.join(OUTPUT_DIR, "public.key")
+    
+    # If a permanent public.key already exists, keep it as-is and do not overwrite it
+    if os.path.exists(key_path):
+        print("public.key already exists. Keeping the permanent GPG public key as-is.")
+        os.makedirs(os.path.join(OUTPUT_DIR, "debian"), exist_ok=True)
+        os.makedirs(os.path.join(OUTPUT_DIR, "fedora"), exist_ok=True)
+        shutil.copy2(key_path, os.path.join(OUTPUT_DIR, "debian/public.key"))
+        shutil.copy2(key_path, os.path.join(OUTPUT_DIR, "fedora/public.key"))
+        return True
+        
     try:
         key_result = subprocess.run(
             ["gpg", "--list-keys", "--with-colons"],
@@ -459,7 +470,6 @@ def export_public_key():
                     
         if key_id:
             print(f"Found key ID: {key_id}")
-            key_path = os.path.join(OUTPUT_DIR, "public.key")
             with open(key_path, "w") as f:
                 subprocess.run(["gpg", "--export", "--armor", key_id], stdout=f, check=True)
             shutil.copy2(key_path, os.path.join(OUTPUT_DIR, "debian/public.key"))
