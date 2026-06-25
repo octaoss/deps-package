@@ -30,9 +30,11 @@ jobs:
           python-version: '3.x'
 
       - name: Import GPG Key
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        if: env.GPG_PRIVATE_KEY != ''
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           # Also import GPG passphrase if configured (optional)
           if [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
             echo "preset-passphrase" # GPG agent configuration can be done here if needed
