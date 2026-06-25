@@ -1,218 +1,136 @@
-# Custom Linux Repository Manager
+# Serverless Linux Repository Manager (APT & YUM/DNF)
 
-Repositori ini berisi skrip otomatisasi untuk membuat, mengelola, dan menambahkan paket (packages) ke dalam repositori linux Anda sendiri, baik untuk **Ubuntu/Debian (APT)** maupun **Fedora (DNF/YUM)**.
+Repository ini berisi sistem otomatisasi penuh untuk membuat dan mengelola repositori paket Linux Anda sendiri, baik untuk **Ubuntu/Debian (APT)** maupun **Fedora/RHEL (DNF/YUM)**. 
 
-Secara default, repositori diarahkan ke direktori lokal `/var/www/repo/`, yang sangat ideal untuk disajikan menggunakan web server seperti Nginx atau Apache.
-
----
-
-## Daftar Isi
-1. [Struktur Direktori Repositori](#struktur-direktori-repositori)
-2. [Setup & Penggunaan Ubuntu/Debian Repository](#1-setup--penggunaan-ubuntudebian-repository)
-3. [Setup & Penggunaan Fedora Repository](#2-setup--penggunaan-fedora-repository)
-4. [Konfigurasi Web Server (Nginx)](#3-konfigurasi-web-server-nginx)
-5. [Konfigurasi di Sisi Client (Pengguna Repositori)](#4-konfigurasi-di-sisi-client-pengguna-repositori)
-6. [Keamanan & Tanda Tangan GPG (Opsional namun Direkomendasikan)](#5-keamanan--tanda-tangan-gpg-opsional-namun-direkomendasikan)
+Berbeda dengan metode tradisional yang membutuhkan server web aktif (VPS) untuk meng-host file `.deb` atau `.rpm` berukuran besar, sistem ini **100% Serverless**:
+- **Metadata Indeks (Repository Indexes)** disimpan dan disajikan secara gratis melalui **GitHub Pages**.
+- **File Paket Binary (`.deb` dan `.rpm`)** disimpan dan diunduh langsung dari **GitHub Releases**.
+- **Otomatisasi Penuh** menggunakan **GitHub Actions** yang akan berjalan secara otomatis setiap kali Anda merilis versi baru di GitHub.
 
 ---
 
-## Struktur Direktori Repositori
-Setelah semua setup dijalankan, struktur direktori `/var/www/repo/` akan tampak seperti berikut:
+## Cara Kerja
+1. Anda mempublikasikan sebuah **GitHub Release** dan melampirkan file `.deb` dan/atau `.rpm` sebagai aset rilis.
+2. **GitHub Actions** mendeteksi rilis baru, lalu secara otomatis:
+   - Mengunduh seluruh file `.deb` dan `.rpm` dari semua rilis sebelumnya.
+   - Mengekstrak metadata paket untuk membuat berkas indeks repositori (`Packages`, `Release`, dan metadata YUM).
+   - Mengubah lokasi file (path) dalam metadata menjadi **URL Absolut** yang mengarah langsung ke GitHub Releases.
+   - Menandatangani repositori menggunakan kunci GPG Anda (jika dikonfigurasi).
+   - Menghasilkan file konfigurasi client (`.repo`) dan halaman dokumentasi (`index.html`) yang sangat informatif.
+   - Menyebarkan (deploy) seluruh metadata tersebut ke branch `gh-pages` untuk disajikan oleh GitHub Pages.
+3. Komputer client dapat memasang paket Anda menggunakan `apt install` atau `dnf install` standar. Saat mengunduh, package manager client akan mengunduh langsung dari CDN GitHub Releases.
+
+---
+
+## Struktur File Repository
+Setelah sistem disebarkan ke GitHub Pages, struktur berkas di branch `gh-pages` akan seperti berikut:
 ```text
-/var/www/repo/
-├── debian/                   # Ubuntu/Debian Repository Root
-│   ├── conf/
-│   │   └── release.conf      # Konfigurasi metadata APT
-│   ├── pool/
-│   │   └── main/             # File .deb disimpan di sini
+gh-pages/
+├── index.html                # Halaman panduan instalasi & daftar paket (dibuat otomatis)
+├── public.key                # Public key GPG untuk verifikasi client (jika GPG dikonfigurasi)
+├── debian/                   # APT Repository Root
+│   ├── public.key
 │   └── dists/
 │       └── stable/
 │           └── main/
-│               └── binary-amd64/
-│                   ├── Packages     # Indeks paket
-│                   └── Packages.gz  # Indeks terkompresi
-└── fedora/                   # Fedora Repository Root
-    ├── *.rpm                 # File .rpm disimpan di sini
-    ├── deps-oktanio.repo     # Berkas konfigurasi client (dibuat otomatis)
-    └── repodata/             # Metadata YUM/DNF (dibuat otomatis oleh createrepo)
+│               ├── binary-amd64/
+│               │   ├── Packages      # Indeks paket dengan URL absolut ke GitHub Releases
+│               │   └── Packages.gz
+│               ├── Release           # Metadata rilis APT
+│               ├── Release.gpg       # Tanda tangan terpisah (GPG)
+│               └── InRelease         # Tanda tangan tertanam (GPG)
+└── fedora/                   # YUM/DNF Repository Root
+    ├── public.key
+    ├── deps-oktanio.repo     # Berkas konfigurasi YUM client (dibuat otomatis)
+    ├── deps-package.repo     # Berkas konfigurasi YUM client alternatif
+    └── repodata/             # Metadata YUM/DNF dengan URL absolut ke GitHub Releases
 ```
 
 ---
 
-## 1. Setup & Penggunaan Ubuntu/Debian Repository
+## Langkah-Langkah Setup awal
 
-### A. Setup Awal
-Jalankan skrip `setup-ubuntu.sh` untuk menginstal dependensi (jika diperlukan), membuat struktur direktori awal, dan file konfigurasi repositori:
-```bash
-sudo ./setup-ubuntu.sh
-```
-*Catatan: Anda bisa mengubah lokasi default repositori dengan memberikan argumen, misalnya: `sudo ./setup-ubuntu.sh /jalur/ke/repo/debian`.*
-*Variabel domain diatur menggunakan `REPO_URL="https://deps.oktanio.dev"` di bagian atas skrip.*
+### 1. Aktifkan GitHub Pages di Repository Anda
+1. Masuk ke halaman repositori Anda di GitHub.
+2. Buka menu **Settings** > **Pages**.
+3. Di bagian **Build and deployment**:
+   - Source: Pilih **Deploy from a branch**.
+   - Branch: Pilih **gh-pages** dan folder **/(root)**, lalu klik **Save**.
+   *(Catatan: Branch `gh-pages` akan dibuat secara otomatis oleh GitHub Actions pada rilis pertama Anda).*
 
-### B. Menambahkan Paket ke Ubuntu
-Untuk mengunduh dan menambahkan paket `.deb` dari URL langsung ke repositori Anda, gunakan skrip `add-package-ubuntu.sh`:
-```bash
-sudo ./add-package-ubuntu.sh <URL_KE_FILE_DEB>
-```
-**Contoh:**
-```bash
-sudo ./add-package-ubuntu.sh https://releases.hashicorp.com/vagrant/2.4.1/vagrant_2.4.1-1_amd64.deb
-```
-Skrip ini secara otomatis akan:
-1. Mengunduh file `.deb` menggunakan `wget` ke direktori `pool/main/`.
-2. Melakukan registrasi indeks paket menggunakan `apt-ftparchive`.
-3. Memperbarui berkas `Packages` dan `Release`.
+### 2. Konfigurasi Kunci Keamanan GPG (Sangat Direkomendasikan)
+Secara default, jika Anda tidak mengonfigurasi GPG, repositori akan dibuat tanpa tanda tangan (unsigned), yang mengharuskan client menggunakan opsi `[trusted=yes]`. Untuk keamanan produksi, sangat disarankan menandatangani repositori menggunakan GPG:
 
----
-
-## 2. Setup & Penggunaan Fedora Repository
-
-### Prasyarat
-Untuk mengelola repositori Fedora, Anda memerlukan tool `createrepo_c` (atau `createrepo`). Jika belum terpasang, skrip setup akan menginstalnya secara otomatis menggunakan package manager sistem Anda (`createrepo-c` di Debian/Ubuntu).
-
-### A. Setup Awal
-Jalankan skrip `setup-fedora.sh` untuk menginstal dependensi, membuat struktur direktori Fedora, menginisialisasi metadata repositori, serta membuat file konfigurasi client secara otomatis:
-```bash
-sudo ./setup-fedora.sh
-```
-*Catatan: Anda bisa mengubah lokasi default repositori dengan memberikan argumen, misalnya: `sudo ./setup-fedora.sh /jalur/ke/repo/fedora`.*
-*Variabel domain diatur menggunakan `REPO_URL="https://deps.oktanio.dev"` di bagian atas skrip.*
-
-### B. Menambahkan Paket ke Fedora (Cara Tambah Package)
-Untuk menambahkan paket `.rpm` (baik dari internet berupa URL, maupun file lokal yang sudah diunduh), gunakan skrip `add-package-fedora.sh`:
-```bash
-sudo ./add-package-fedora.sh <URL_RPM_ATAU_JALUR_FILE_LOKAL>
-```
-**Contoh 1 (Menggunakan URL):**
-```bash
-sudo ./add-package-fedora.sh https://nginx.org/packages/mainline/centos/9/x86_64/RPMS/nginx-1.25.3-1.el9.ngx.x86_64.rpm
-```
-**Contoh 2 (Menggunakan File Lokal):**
-```bash
-sudo ./add-package-fedora.sh ~/Downloads/my-package-1.0.0.rpm
-```
-Skrip ini secara otomatis akan:
-1. Mengunduh file RPM (jika berupa URL) atau menyalinnya (jika berupa berkas lokal) ke direktori `/var/www/repo/fedora/`.
-2. Menjalankan perintah `createrepo --update` untuk memperbarui berkas metadata di folder `repodata/` agar client mengetahui adanya paket baru.
-
----
-
-## 3. Konfigurasi Web Server (Nginx)
-
-Agar repositori dapat diakses oleh komputer client, Anda harus menyajikan direktori `/var/www/repo` menggunakan web server seperti Nginx.
-
-Buat file konfigurasi virtual host Nginx baru, misalnya di `/etc/nginx/sites-available/repo.conf`:
-
-```nginx
-server {
-    listen 80;
-    server_name deps.oktanio.dev; # Ubah domain jika pindah host
-
-    root /var/www/repo;
-    autoindex on; # Wajib diaktifkan agar direktori dapat dilist oleh package manager
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-}
-```
-
-Aktifkan konfigurasi dan restart Nginx:
-```bash
-sudo ln -s /etc/nginx/sites-available/repo.conf /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
----
-
-## 4. Konfigurasi di Sisi Client (Pengguna Repositori)
-
-Setelah web server berjalan di `https://deps.oktanio.dev`, client dapat mendaftarkan repositori tersebut dengan cara berikut:
-
-### A. Untuk Client Ubuntu/Debian
-Buat file source list baru di `/etc/apt/sources.list.d/deps-oktanio.list`:
-```bash
-echo "deb [trusted=yes] https://deps.oktanio.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-oktanio.list
-```
-*Catatan: Opsi `[trusted=yes]` digunakan jika repositori tidak ditandatangani dengan kunci GPG.*
-
-Perbarui indeks paket Anda:
-```bash
-sudo apt update
-```
-Sekarang Anda siap memasang aplikasi dari repositori tersebut menggunakan `sudo apt install <nama-paket>`.
-
-### B. Untuk Client Fedora
-Client Fedora dapat dengan mudah mengunduh file konfigurasi repo yang sudah otomatis terbuat saat menjalankan `setup-fedora.sh`:
-```bash
-sudo curl -sL https://deps.oktanio.dev/fedora/deps-oktanio.repo -o /etc/yum.repos.d/deps-oktanio.repo
-```
-
-Atau mendaftarkannya secara manual dengan membuat file `/etc/yum.repos.d/deps-oktanio.repo`:
-```ini
-[deps-oktanio]
-name=Deps Oktanio Repository
-baseurl=https://deps.oktanio.dev/fedora
-enabled=1
-gpgcheck=0
-```
-
-Perbarui cache repositori:
-```bash
-sudo dnf makecache
-```
-Sekarang Anda siap memasang aplikasi menggunakan `sudo dnf install <nama-paket>`.
-
----
-
-## 5. Keamanan & Tanda Tangan GPG (Opsional namun Direkomendasikan)
-
-Secara default, instalasi di atas menggunakan konfigurasi tanpa tanda tangan kunci (unsigned / untrusted). Untuk produksi, sangat direkomendasikan menandatangani repositori menggunakan GPG.
-
-### Langkah-langkah Pembuatan Kunci GPG:
-1. Buat kunci GPG baru di server repositori:
+1. Buat kunci GPG baru di komputer lokal Anda jika belum punya:
    ```bash
    gpg --generate-key
    ```
-2. Ekspor public key ke root repositori Anda agar client bisa mengunduhnya:
+2. Ekspor private key Anda dalam format teks (ASCII armored):
    ```bash
-   gpg --export --armor "Nama Kunci Anda" > /var/www/repo/public.key
+   gpg --export-secret-keys --armor "Nama Kunci GPG Anda"
+   ```
+3. Salin seluruh teks output (termasuk baris `-----BEGIN PGP PRIVATE KEY-----` dan `-----END PGP PRIVATE KEY-----`).
+4. Di halaman repositori GitHub Anda, buka **Settings** > **Secrets and variables** > **Actions**.
+5. Klik **New repository secret**, beri nama **`GPG_PRIVATE_KEY`**, tempel teks private key tersebut, dan klik **Add secret**.
+
+---
+
+## Cara Penggunaan & Rilis Paket
+
+Untuk menambahkan paket baru ke dalam repositori Anda, Anda hanya perlu membuat sebuah rilis baru di GitHub:
+
+1. Masuk ke halaman repositori Anda, lalu klik **Releases** > **Create a new release** (atau rancang draf rilis baru).
+2. Buat tag baru (misalnya `v1.0.0`) dan isi informasi rilis.
+3. Di bagian **Attach binaries...**, unggah file `.deb` dan/atau `.rpm` hasil build Anda.
+4. Klik **Publish release**.
+5. GitHub Actions akan otomatis berjalan (`Update Linux Package Repository`) untuk membangun ulang metadata repositori dan memperbarui halaman GitHub Pages Anda dalam hitungan detik.
+
+---
+
+## Cara Pengguna Pakai (Client Installation)
+
+Setelah repositori Anda aktif di GitHub Pages (misalnya pada tautan `https://username.github.io/repo-name`), pengguna/client Anda dapat mendaftarkan repositori tersebut ke sistem mereka dan langsung memasang paket Anda dengan sangat mudah.
+
+> [!NOTE]
+> Ganti `username` dan `repo-name` pada perintah di bawah ini sesuai dengan nama akun GitHub dan nama repositori Anda.
+
+### A. Cara Pasang di Ubuntu / Debian (APT)
+Jalankan perintah berikut di terminal komputer client:
+
+1. **Daftarkan Kunci Keamanan GPG (Jika Repositori Ditandatangani):**
+   ```bash
+   curl -fsSL https://username.github.io/repo-name/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
    ```
 
-### Menandatangani Repositori Ubuntu/Debian:
-Setelah menambahkan paket, lakukan penandatanganan pada berkas `Release`:
-```bash
-cd /var/www/repo/debian
-gpg --yes --clearsign -o dists/stable/InRelease dists/stable/Release
-gpg --yes -abs -o dists/stable/Release.gpg dists/stable/Release
-```
-**Konfigurasi Client Ubuntu (Aman):**
-```bash
-# Unduh & daftarkan public key
-curl -fsSL https://deps.oktanio.dev/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-oktanio.gpg
+2. **Tambahkan Repositori ke Daftar Sumber (Sources List):**
+   * **Metode 1: Dengan Keamanan GPG (Sangat Direkomendasikan)**
+     ```bash
+     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://username.github.io/repo-name/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     ```
+   * **Metode 2: Tanpa GPG (Menggunakan opsi bypass tepercaya)**
+     ```bash
+     echo "deb [trusted=yes] https://username.github.io/repo-name/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     ```
 
-# Daftarkan repositori menggunakan signed-by
-echo "deb [signed-by=/etc/apt/keyrings/deps-oktanio.gpg] https://deps.oktanio.dev/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-oktanio.list
-sudo apt update
-```
+3. **Perbarui Cache dan Pasang Paket:**
+   ```bash
+   sudo apt update
+   sudo apt install <nama-paket>
+   ```
 
-### Menandatangani Repositori Fedora:
-Tandatangani file metadata `repomd.xml` setelah menjalankan `createrepo`:
-```bash
-cd /var/www/repo/fedora
-gpg --detach-sign --armor repodata/repomd.xml
-```
-*(Ini akan menghasilkan berkas `repodata/repomd.xml.asc`)*
+---
 
-**Konfigurasi Client Fedora (Aman):**
-Ubah file `/etc/yum.repos.d/deps-oktanio.repo` menjadi:
-```ini
-[deps-oktanio]
-name=Deps Oktanio Repository
-baseurl=https://deps.oktanio.dev/fedora
-enabled=1
-gpgcheck=1
-gpgkey=https://deps.oktanio.dev/public.key
-```
-Ketika pertama kali dnf mendownload paket, dnf akan mengunduh kunci GPG dan memverifikasi integritas repositori serta paket di dalamnya.
+### B. Cara Pasang di Fedora / RHEL / CentOS (DNF/YUM)
+Jalankan perintah berikut di terminal komputer client:
+
+1. **Unduh File Konfigurasi Repositori secara Otomatis:**
+   ```bash
+   sudo curl -sL https://username.github.io/repo-name/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
+   ```
+
+2. **Perbarui Cache dan Pasang Paket:**
+   ```bash
+   sudo dnf makecache
+   sudo dnf install <nama-paket>
+   ```
+

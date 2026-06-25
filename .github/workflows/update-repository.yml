@@ -1,0 +1,75 @@
+name: Update Linux Package Repository
+
+on:
+  release:
+    types: [published, edited, deleted]
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c gpg
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Import GPG Key
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          # Also import GPG passphrase if configured (optional)
+          if [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
+            echo "preset-passphrase" # GPG agent configuration can be done here if needed
+          fi
+
+      - name: Run Repository Builder Script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          python3 update_repo.py
+
+      - name: Deploy to GitHub Pages
+        run: |
+          # Create deployment directory
+          mkdir -p deploy_dir
+          
+          # Copy generated repository files
+          [ -d debian ] && cp -r debian deploy_dir/
+          [ -d fedora ] && cp -r fedora deploy_dir/
+          [ -f index.html ] && cp index.html deploy_dir/
+          [ -f public.key ] && cp public.key deploy_dir/
+          
+          # Initialize git in deploy directory and push to gh-pages branch
+          cd deploy_dir
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b gh-pages
+          git add .
+          
+          # Commit changes if there are any
+          if git status --porcelain | grep -q .; then
+            git commit -m "Automated update of repository metadata for ${{ github.event.release.tag_name || 'workflow dispatch' }}"
+            git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+            echo "Successfully deployed repository metadata to gh-pages branch."
+          else
+            echo "No changes in repository metadata. Deployment skipped."
+          fi

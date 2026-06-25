@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-
 REPO=/var/www/repo/fedora
 
 if [ -z "$1" ]; then
@@ -11,11 +10,10 @@ fi
 
 TARGET="$1"
 
-
 CREATEREPO_CMD=""
-if command -v createrepo_c &> /dev/null; then
+if command -v createrepo_c &>/dev/null; then
   CREATEREPO_CMD="createrepo_c"
-elif command -v createrepo &> /dev/null; then
+elif command -v createrepo &>/dev/null; then
   CREATEREPO_CMD="createrepo"
 else
   echo "Error: 'createrepo_c' or 'createrepo' is not installed."
@@ -25,12 +23,11 @@ fi
 
 mkdir -p "$REPO"
 
-
 if [[ "$TARGET" =~ ^https?:// ]]; then
   echo "Downloading RPM from $TARGET..."
   wget -N -P "$REPO" "$TARGET"
 else
-  
+
   if [ -f "$TARGET" ]; then
     echo "Copying RPM from $TARGET..."
     cp -u "$TARGET" "$REPO/"
@@ -39,7 +36,6 @@ else
     exit 1
   fi
 fi
-
 
 echo "Updating Fedora repository metadata with $CREATEREPO_CMD..."
 $CREATEREPO_CMD --update "$REPO"
