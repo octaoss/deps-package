@@ -40,6 +40,10 @@ def setup_environment():
     os.makedirs("packages_cache", exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
+    # Create .nojekyll in output directory to bypass Jekyll if deploying via branch
+    with open(os.path.join(OUTPUT_DIR, ".nojekyll"), "w") as f:
+        f.write("")
+    
     # Ensure packages_cache is in .gitignore
     gitignore_content = "\npackages_cache/\ntemp_apt/\ntemp_rpm/\n"
     if os.path.exists(".gitignore"):
@@ -291,7 +295,7 @@ def generate_rpm_repo(repo_owner, repo_name, packages_map):
         sys.exit(1)
 
     try:
-        subprocess.run(["createrepo_c", "--no-database", fedora_dir], check=True)
+        subprocess.run(["createrepo_c", "--no-database", "--general-compress-type", "gz", fedora_dir], check=True)
     except Exception as e:
         print(f"Error running createrepo_c: {e}")
         return []

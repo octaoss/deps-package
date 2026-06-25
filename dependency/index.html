@@ -291,7 +291,10 @@
             <p class="subtitle">Custom Linux Package Repository</p>
         </header>
 
-        
+        <div class="gpg-section">
+            <h4>🔒 Signed Repository</h4>
+            <p>This repository is signed with GPG for security. You can download the public key here: <a href="https://octaoss.github.io/deps-package/dependency/public.key" target="_blank">public.key</a> or use the installation instructions below.</p>
+        </div>
 
         <h2>Setup Instructions</h2>
         <div class="tabs">
@@ -305,14 +308,14 @@
                 <p>1. Register the repository GPG key (Recommended):</p>
                 <div class="code-container">
                     <button class="copy-btn" onclick="copyCode('ubuntu-key')">Copy</button>
-                    <pre id="ubuntu-key"># Unsigned repository (less secure)</pre>
+                    <pre id="ubuntu-key">curl -fsSL https://octaoss.github.io/deps-package/dependency/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-deps-package.gpg</pre>
                 </div>
             </div>
             <div class="instruction-step">
                 <p>2. Add the repository to sources list:</p>
                 <div class="code-container">
                     <button class="copy-btn" onclick="copyCode('ubuntu-repo')">Copy</button>
-                    <pre id="ubuntu-repo">echo "deb [trusted=yes] https://octaoss.github.io/deps-package/dependency/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-deps-package.list</pre>
+                    <pre id="ubuntu-repo">echo "deb [signed-by=/etc/apt/keyrings/deps-deps-package.gpg] https://octaoss.github.io/deps-package/dependency/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-deps-package.list</pre>
                 </div>
             </div>
             <div class="instruction-step">
@@ -345,7 +348,7 @@ sudo dnf install &lt;package-name&gt;</pre>
         </div>
 
         <div class="package-list">
-            <h2>Available Packages (1)</h2>
+            <h2>Available Packages (2)</h2>
             
             
             
@@ -361,6 +364,18 @@ sudo dnf install &lt;package-name&gt;</pre>
                     </div>
                 </div>
                 <a href="https://github.com/octaoss/nopilot/releases/download/v1.95.2/octanopilot_1.95.2-1780733287_amd64.deb" class="download-btn" target="_blank">Download</a>
+            </div>
+            <div class="package-card">
+                <div class="package-info">
+                    <h3>octanopilot</h3>
+                    <p>Visual Studio Code is a new choice of tool that combines the simplicity of a code editor with what developers need for the core edit-build-debug cycle. See https://code.visualstudio.com/docs/setup/linux for installation instructions and FAQ.</p>
+                    <div class="package-meta">
+                        <span class="badge badge-rpm">rpm</span>
+                        <span class="badge badge-ver">1.95.2-1780733377.el8</span>
+                        <span class="badge badge-arch">x86_64</span>
+                    </div>
+                </div>
+                <a href="https://github.com/octaoss/nopilot/releases/download/v1.95.2/octanopilot-1.95.2-1780733377.el8.x86_64.rpm" class="download-btn" target="_blank">Download</a>
             </div>
         </div>
 
