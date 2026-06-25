@@ -3,7 +3,7 @@
 Repository ini berisi sistem manajemen repositori paket Linux yang **100% Serverless** untuk **Ubuntu/Debian (APT)** dan **Fedora/RHEL (DNF/YUM)**.
 
 Dengan metode ini:
-- **Metadata Indeks Repositori** dibangun secara lokal menggunakan skrip pembangun dan disajikan secara gratis melalui **GitHub Pages** (di dalam folder `dependency/`).
+- **Metadata Indeks Repositori** dibangun secara lokal menggunakan skrip pembangun dan disajikan secara gratis melalui **GitHub Pages** langsung di direktori utama repositori Anda.
 - **File Paket Binary (`.deb` dan `.rpm`)** tidak diunggah ke Git atau GitHub Pages, melainkan diunduh langsung dari tautan absolut luar seperti **GitHub Releases**.
 - Anda memiliki kontrol penuh secara lokal untuk menambahkan atau menghapus paket kapan pun Anda inginkan menggunakan skrip Python sederhana.
 
@@ -14,10 +14,10 @@ Dengan metode ini:
 2. Skrip secara otomatis:
    - Mengunduh berkas paket ke dalam folder *cache* lokal `packages_cache/` (folder ini otomatis diabaikan oleh Git melalui `.gitignore`).
    - Mencatat pemetaan nama berkas ke tautan unduhannya di dalam berkas `packages.json`.
-   - Menggunakan perkakas standar (`apt-ftparchive` dan `createrepo_c`) untuk mengekstrak metadata dan menyusun struktur repositori APT dan YUM di dalam folder `dependency/`.
+   - Menggunakan perkakas standar (`apt-ftparchive` dan `createrepo_c`) untuk mengekstrak metadata dan menyusun struktur repositori APT (`debian/`) dan YUM (`fedora/`) langsung di root workspace Anda.
    - Mengubah lokasi file paket dalam indeks menjadi tautan unduhan absolut yang Anda berikan.
    - Menghasilkan berkas konfigurasi client, halaman landing page interaktif (`index.html`), serta modul penjelajah folder (*autoindex*) di setiap subdirektori untuk mencegah error 404 pada GitHub Pages.
-3. Anda cukup melakukan `git commit` dan `git push` berkas metadata di dalam folder `dependency/` ke GitHub.
+3. Anda cukup melakukan `git commit` dan `git push` berkas metadata tersebut ke GitHub.
 4. Komputer client akan mengunduh indeks dari GitHub Pages Anda, dan ketika memasang paket, mereka akan mengunduhnya langsung dari GitHub Releases secara transparan.
 
 ---
@@ -49,7 +49,7 @@ python3 add_package.py https://github.com/octaoss/deps-package/releases/download
 python3 add_package.py https://github.com/octaoss/deps-package/releases/download/v1.0.0/octanopilot-1.0.0-1.x86_64.rpm
 ```
 
-Skrip ini akan secara otomatis memperbarui direktori `dependency/` Anda. Anda dapat menambahkan banyak paket secara bergiliran dengan menjalankan kembali perintah tersebut untuk tautan paket lainnya. Semua paket yang telah ditambahkan sebelumnya akan tetap dipertahankan di dalam repositori.
+Skrip ini akan secara otomatis memperbarui direktori kerja lokal Anda. Anda dapat menambahkan banyak paket secara bergiliran dengan menjalankan kembali perintah tersebut untuk tautan paket lainnya. Semua paket yang telah ditambahkan sebelumnya akan tetap dipertahankan di dalam repositori.
 
 ---
 
@@ -64,7 +64,7 @@ git push origin main
 ```
 
 Situs GitHub Pages Anda akan otomatis diperbarui. Halaman panduan interaktif dan daftar paket akan tersedia di tautan:
-**`https://octaoss.github.io/deps-package/dependency/`**
+**`https://octaoss.github.io/deps-package/`**
 
 ---
 
@@ -76,17 +76,17 @@ Jalankan perintah berikut di terminal komputer client:
 1. **Daftarkan Kunci Keamanan GPG (Jika Repositori Ditandatangani):**
    *(Jika Anda memiliki kunci GPG lokal, skrip otomatis akan menandatangani repositori dan mengekspor kunci publik Anda)*
    ```bash
-   curl -fsSL https://octaoss.github.io/deps-package/dependency/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
+   curl -fsSL https://octaoss.github.io/deps-package/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-package.gpg
    ```
 
 2. **Tambahkan Repositori ke Daftar Sumber (Sources List):**
    * **Metode 1: Dengan Keamanan GPG (Sangat Direkomendasikan)**
      ```bash
-     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://octaoss.github.io/deps-package/dependency/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [signed-by=/etc/apt/keyrings/deps-package.gpg] https://octaoss.github.io/deps-package/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
    * **Metode 2: Tanpa GPG (Menggunakan opsi bypass tepercaya)**
      ```bash
-     echo "deb [trusted=yes] https://octaoss.github.io/deps-package/dependency/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
+     echo "deb [trusted=yes] https://octaoss.github.io/deps-package/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-package.list
      ```
 
 3. **Perbarui Cache dan Pasang Paket:**
@@ -102,7 +102,7 @@ Jalankan perintah berikut di terminal komputer client:
 
 1. **Unduh File Konfigurasi Repositori secara Otomatis:**
    ```bash
-   sudo curl -sL https://octaoss.github.io/deps-package/dependency/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
+   sudo curl -sL https://octaoss.github.io/deps-package/fedora/deps-package.repo -o /etc/yum.repos.d/deps-package.repo
    ```
 
 2. **Perbarui Cache dan Pasang Paket:**

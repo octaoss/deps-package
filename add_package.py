@@ -11,8 +11,8 @@ import gzip
 import hashlib
 import xml.etree.ElementTree as ET
 
-# Define output directory as requested (folder dependenci)
-OUTPUT_DIR = "dependency"
+# Define output directory (set to "." to write directly to the workspace root)
+OUTPUT_DIR = "."
 
 def sha256_checksum(data):
     return hashlib.sha256(data).hexdigest()
@@ -488,7 +488,7 @@ def export_public_key():
 
 def generate_client_configs(repo_owner, repo_name, has_gpg):
     print("=== Generating Client Configurations ===")
-    repo_url = f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
+    repo_url = f"https://{repo_owner}.github.io/{repo_name}" if OUTPUT_DIR == "." else f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
     
     repo_content = f"""[deps-{repo_name}]
 name=Deps {repo_name} Repository
@@ -514,7 +514,7 @@ gpgkey={repo_url}/public.key
 
 def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
     print("=== Generating Landing Page ===")
-    repo_url = f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
+    repo_url = f"https://{repo_owner}.github.io/{repo_name}" if OUTPUT_DIR == "." else f"https://{repo_owner}.github.io/{repo_name}/{OUTPUT_DIR}"
     
     # Sort packages by name
     packages = sorted(packages, key=lambda x: x["name"])

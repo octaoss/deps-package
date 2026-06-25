@@ -1,1 +1,0 @@
-# Disables Jekyll build on GitHub Pages to prevent Liquid template parsing conflicts with Javascript double curly braces
