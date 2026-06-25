@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deps Package Repository</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --container-bg: #151d30;
+            --accent-color: #3b82f6;
+            --accent-hover: #60a5fa;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --border-color: #1e293b;
+            --code-bg: #0f172a;
+            --success-color: #10b981;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            padding: 2rem 1rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: var(--container-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 2.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1.5rem;
+        }
+        
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            color: #f3f4f6;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+        
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+        
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .instruction-step {
+            margin-bottom: 1.5rem;
+        }
+        
+        .instruction-step p {
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+        
+        .code-container {
+            position: relative;
+            background-color: var(--code-bg);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+        
+        pre {
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background-color: var(--container-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .copy-btn:hover {
+            color: var(--text-primary);
+            background-color: var(--border-color);
+        }
+        
+        .package-list {
+            margin-top: 2rem;
+        }
+        
+        .package-card {
+            background-color: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        
+        .package-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-color);
+        }
+        
+        .package-info h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+        
+        .package-info p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .package-meta {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge-deb {
+            background-color: rgba(236, 72, 153, 0.15);
+            color: #f472b6;
+            border: 1px solid rgba(236, 72, 153, 0.3);
+        }
+        
+        .badge-rpm {
+            background-color: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .badge-arch {
+            background-color: rgba(107, 114, 128, 0.15);
+            color: #9ca3af;
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+        
+        .badge-ver {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .download-btn {
+            background-color: var(--accent-color);
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+        }
+        
+        .download-btn:hover {
+            background-color: var(--accent-hover);
+        }
+        
+        .gpg-section {
+            background-color: rgba(59, 130, 246, 0.05);
+            border: 1px dashed rgba(59, 130, 246, 0.3);
+            padding: 1.25rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        
+        .gpg-section h4 {
+            margin-bottom: 0.5rem;
+            color: var(--accent-hover);
+        }
+        
+        .gpg-section p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .gpg-section a {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .gpg-section a:hover {
+            text-decoration: underline;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1.5rem;
+        }
+        
+        footer a {
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            color: var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>deps-package</h1>
+            <p class="subtitle">Custom Linux Package Repository</p>
+        </header>
+
+        
+
+        <h2>Setup Instructions</h2>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('ubuntu')">Ubuntu / Debian</button>
+            <button class="tab-btn" onclick="switchTab('fedora')">Fedora / RHEL / CentOS</button>
+        </div>
+
+        <!-- UBUNTU TAB -->
+        <div id="ubuntu" class="tab-content active">
+            <div class="instruction-step">
+                <p>1. Register the repository GPG key (Recommended):</p>
+                <div class="code-container">
+                    <button class="copy-btn" onclick="copyCode('ubuntu-key')">Copy</button>
+                    <pre id="ubuntu-key"># Unsigned repository (less secure)</pre>
+                </div>
+            </div>
+            <div class="instruction-step">
+                <p>2. Add the repository to sources list:</p>
+                <div class="code-container">
+                    <button class="copy-btn" onclick="copyCode('ubuntu-repo')">Copy</button>
+                    <pre id="ubuntu-repo">echo "deb [trusted=yes] https://octaoss.github.io/deps-package/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-deps-package.list</pre>
+                </div>
+            </div>
+            <div class="instruction-step">
+                <p>3. Update package index and install packages:</p>
+                <div class="code-container">
+                    <button class="copy-btn" onclick="copyCode('ubuntu-install')">Copy</button>
+                    <pre id="ubuntu-install">sudo apt update
+sudo apt install &lt;package-name&gt;</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- FEDORA TAB -->
+        <div id="fedora" class="tab-content">
+            <div class="instruction-step">
+                <p>1. Add the repository configuration file:</p>
+                <div class="code-container">
+                    <button class="copy-btn" onclick="copyCode('fedora-repo')">Copy</button>
+                    <pre id="fedora-repo">sudo curl -sL https://octaoss.github.io/deps-package/fedora/deps-deps-package.repo -o /etc/yum.repos.d/deps-deps-package.repo</pre>
+                </div>
+            </div>
+            <div class="instruction-step">
+                <p>2. Update metadata cache and install packages:</p>
+                <div class="code-container">
+                    <button class="copy-btn" onclick="copyCode('fedora-install')">Copy</button>
+                    <pre id="fedora-install">sudo dnf makecache
+sudo dnf install &lt;package-name&gt;</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="package-list">
+            <h2>Available Packages (0)</h2>
+            
+            <p style='color: var(--text-secondary); text-align: center; padding: 2rem;'>No packages available in this repository yet.</p>
+            
+            
+        </div>
+
+        <footer>
+            <p>Powered by GitHub Actions & Pages. View source on <a href="https://github.com/octaoss/deps-package" target="_blank">GitHub</a>.</p>
+        </footer>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function copyCode(elementId) {
+            const text = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -472,6 +472,44 @@ def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
     deb_packages = [p for p in packages if p["type"] == "deb"]
     rpm_packages = [p for p in packages if p["type"] == "rpm"]
     
+    # Pre-calculate strings for GPG and commands to prevent backslash/quote issues in f-strings
+    if has_gpg:
+        gpg_badge_html = f"""<div class="gpg-section">
+            <h4>🔒 Signed Repository</h4>
+            <p>This repository is signed with GPG for security. You can download the public key here: <a href="{repo_url}/public.key" target="_blank">public.key</a> or use the installation instructions below.</p>
+        </div>"""
+        ubuntu_key_cmd = f"curl -fsSL {repo_url}/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-{repo_name}.gpg"
+        ubuntu_repo_cmd = f'echo "deb [signed-by=/etc/apt/keyrings/deps-{repo_name}.gpg] {repo_url}/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-{repo_name}.list'
+    else:
+        gpg_badge_html = ""
+        ubuntu_key_cmd = "# Unsigned repository (less secure)"
+        ubuntu_repo_cmd = f'echo "deb [trusted=yes] {repo_url}/debian stable main" | sudo tee /etc/apt/sources.list.d/deps-{repo_name}.list'
+
+    # Pre-calculate package list HTML
+    if not packages:
+        empty_packages_html = "<p style='color: var(--text-secondary); text-align: center; padding: 2rem;'>No packages available in this repository yet.</p>"
+    else:
+        empty_packages_html = ""
+
+    packages_html_list = []
+    for p in packages:
+        badge_class = "badge-deb" if p["type"] == "deb" else "badge-rpm"
+        desc = p["description"] or "No description provided."
+        packages_html_list.append(f"""
+            <div class="package-card">
+                <div class="package-info">
+                    <h3>{p["name"]}</h3>
+                    <p>{desc}</p>
+                    <div class="package-meta">
+                        <span class="badge {badge_class}">{p["type"]}</span>
+                        <span class="badge badge-ver">{p["version"]}</span>
+                        <span class="badge badge-arch">{p["architecture"]}</span>
+                    </div>
+                </div>
+                <a href="{p["url"]}" class="download-btn" target="_blank">Download</a>
+            </div>""")
+    packages_html = "".join(packages_html_list)
+
     # HTML generation
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -766,10 +804,7 @@ def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
             <p class="subtitle">Custom Linux Package Repository</p>
         </header>
 
-        {f'''<div class="gpg-section">
-            <h4>🔒 Signed Repository</h4>
-            <p>This repository is signed with GPG for security. You can download the public key here: <a href="{repo_url}/public.key" target="_blank">public.key</a> or use the installation instructions below.</p>
-        </div>''' if has_gpg else ''}
+        {gpg_badge_html}
 
         <h2>Setup Instructions</h2>
         <div class="tabs">
@@ -783,14 +818,14 @@ def generate_landing_page(repo_owner, repo_name, packages, has_gpg):
                 <p>1. Register the repository GPG key (Recommended):</p>
                 <div class="code-container">
                     <button class="copy-btn" onclick="copyCode('ubuntu-key')">Copy</button>
-                    <pre id="ubuntu-key">{"curl -fsSL " + repo_url + "/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/deps-" + repo_name + ".gpg" if has_gpg else "# Unsigned repository (less secure)"}</pre>
+                    <pre id="ubuntu-key">{ubuntu_key_cmd}</pre>
                 </div>
             </div>
             <div class="instruction-step">
                 <p>2. Add the repository to sources list:</p>
                 <div class="code-container">
                     <button class="copy-btn" onclick="copyCode('ubuntu-repo')">Copy</button>
-                    <pre id="ubuntu-repo">{"echo \\"deb [signed-by=/etc/apt/keyrings/deps-" + repo_name + ".gpg] " + repo_url + "/debian stable main\\" | sudo tee /etc/apt/sources.list.d/deps-" + repo_name + ".list" if has_gpg else "echo \\"deb [trusted=yes] " + repo_url + "/debian stable main\\" | sudo tee /etc/apt/sources.list.d/deps-" + repo_name + ".list"}</pre>
+                    <pre id="ubuntu-repo">{ubuntu_repo_cmd}</pre>
                 </div>
             </div>
             <div class="instruction-step">
@@ -825,22 +860,9 @@ sudo dnf install &lt;package-name&gt;</pre>
         <div class="package-list">
             <h2>Available Packages ({len(packages)})</h2>
             
-            {"<p style='color: var(--text-secondary); text-align: center; padding: 2rem;'>No packages available in this repository yet.</p>" if not packages else ""}
+            {empty_packages_html}
             
-            {"".join([f'''
-            <div class="package-card">
-                <div class="package-info">
-                    <h3>{p["name"]}</h3>
-                    <p>{p["description"] or "No description provided."}</p>
-                    <div class="package-meta">
-                        <span class="badge badge-{"deb" if p["type"] == "deb" else "rpm"}">{p["type"]}</span>
-                        <span class="badge badge-ver">{p["version"]}</span>
-                        <span class="badge badge-arch">{p["architecture"]}</span>
-                    </div>
-                </div>
-                <a href="{p["url"]}" class="download-btn" target="_blank">Download</a>
-            </div>
-            ''' for p in packages])}
+            {packages_html}
         </div>
 
         <footer>
