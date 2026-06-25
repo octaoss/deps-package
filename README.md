@@ -75,15 +75,59 @@ Secara default, jika Anda tidak mengonfigurasi GPG, repositori akan dibuat tanpa
 
 ---
 
-## Cara Penggunaan & Rilis Paket
+## Cara Menambahkan Paket (.deb & .rpm)
 
-Untuk menambahkan paket baru ke dalam repositori Anda, Anda hanya perlu membuat sebuah rilis baru di GitHub:
+Sistem ini dirancang sangat fleksibel. Anda tidak perlu mengunggah file binary secara manual ke server web atau melakukan konfigurasi command-line yang rumit. Cukup unggah berkas `.deb` dan `.rpm` Anda ke **GitHub Releases**, dan sistem akan melakukan sisanya secara otomatis.
 
-1. Masuk ke halaman repositori Anda, lalu klik **Releases** > **Create a new release** (atau rancang draf rilis baru).
-2. Buat tag baru (misalnya `v1.0.0`) dan isi informasi rilis.
-3. Di bagian **Attach binaries...**, unggah file `.deb` dan/atau `.rpm` hasil build Anda.
-4. Klik **Publish release**.
-5. GitHub Actions akan otomatis berjalan (`Update Linux Package Repository`) untuk membangun ulang metadata repositori dan memperbarui halaman GitHub Pages Anda dalam hitungan detik.
+Terdapat dua cara untuk menambahkan dan mengunggah berkas paket Anda:
+
+### Metode 1: Secara Manual (Melalui Antarmuka Web GitHub)
+
+Ini adalah cara termudah jika Anda melakukan kompilasi/build paket secara lokal di komputer Anda:
+
+1. **Siapkan File Paket Anda:** Pastikan Anda telah mem-build berkas `.deb` (untuk Debian/Ubuntu) atau `.rpm` (untuk Fedora/CentOS) di komputer lokal Anda.
+2. **Buka Halaman Rilis:** Masuk ke repositori Anda di GitHub, lalu klik menu **Releases** di kolom sebelah kanan, kemudian klik tombol **Draft a new release** (atau **Create a new release**).
+3. **Tentukan Tag & Judul Rilis:**
+   - Buat tag baru, misalnya `v1.0.0` (disarankan menggunakan format semantic versioning).
+   - Berikan judul rilis, misalnya `Release v1.0.0`.
+4. **Unggah Berkas Paket Anda:**
+   - Tarik (drag and drop) atau klik area **Attach binaries by dropping them here or selecting them** di bagian bawah editor rilis.
+   - Pilih berkas `.deb` dan `.rpm` yang ingin Anda masukkan ke dalam repositori.
+5. **Publikasikan Rilis:** Klik tombol **Publish release** yang berwarna hijau di bagian bawah.
+6. **Tunggu Otomatisasi Selesai:** Setelah dipublikasikan, GitHub Actions (`Update Linux Package Repository`) akan mendeteksi rilis baru ini secara otomatis. Tindakan ini akan mengunduh paket tersebut, mengekstrak metadatanya, membangun indeks repositori, dan memperbarui situs web GitHub Pages Anda dalam beberapa detik.
+
+---
+
+### Metode 2: Secara Otomatis (Melalui Pipeline CI/CD / GitHub Actions)
+
+Jika Anda ingin membangun berkas `.deb` dan `.rpm` secara otomatis dari kode sumber Anda dan langsung merilisnya ke repositori paket ini, Anda dapat menggunakan perintah `gh` CLI dalam alur kerja GitHub Actions Anda.
+
+Berikut adalah contoh potongan baris alur kerja (workflow) untuk mempublikasikan rilis beserta asetnya secara otomatis:
+
+```yaml
+      - name: Build Packages
+        run: |
+          # Perintah kompilasi/build aplikasi Anda di sini
+          # Misalnya menghasilkan: build/myapp_1.0.0_amd64.deb dan build/myapp-1.0.0-1.x86_64.rpm
+
+      - name: Create GitHub Release & Upload Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.0 build/*.deb build/*.rpm \
+            --title "Release v1.0.0" \
+            --notes "Rilis otomatis dari alur kerja CI/CD."
+```
+
+Setiap kali alur kerja rilis otomatis di atas dijalankan, sistem repositori paket Anda akan langsung mendeteksinya dan memperbarui indeks paket di GitHub Pages secara real-time.
+
+---
+
+### Ketentuan Penting & Tips Keamanan
+
+- **Informasi Paket Otomatis:** Anda tidak perlu menulis versi atau deskripsi paket secara manual di repositori ini. Skrip otomatisasi akan membaca langsung file control/spec yang ada di dalam berkas `.deb` dan `.rpm` Anda untuk mendapatkan informasi Nama Paket, Versi, Arsitektur, dan Deskripsi untuk ditampilkan di landing page.
+- **Mendukung Banyak Paket & Versi:** Anda dapat mengunggah beberapa berkas `.deb` dan `.rpm` yang berbeda ke dalam satu rilis tunggal, atau membaginya ke dalam beberapa rilis berbeda. Sistem otomatisasi akan memindai **seluruh rilis** yang ada di repositori Anda dan menggabungkannya ke dalam satu indeks repositori tunggal yang utuh.
+- **Penghapusan Paket:** Jika Anda ingin menghapus suatu paket dari repositori, Anda cukup menghapus file aset dari rilis tersebut atau menghapus rilis itu sepenuhnya dari halaman GitHub. Alur kerja akan secara otomatis membangun kembali indeks repositori Anda tanpa paket yang telah dihapus pada jalannya alur kerja berikutnya.
 
 ---
 
