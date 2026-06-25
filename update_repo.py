@@ -901,6 +901,180 @@ sudo dnf install &lt;package-name&gt;</pre>
     with open("index.html", "w") as f:
         f.write(html_content)
     print("Generated landing page index.html successfully.")
+def generate_autoindexes():
+    print("=== Generating Autoindexes (Directory Browsers) ===")
+    for base_dir in ["debian", "fedora"]:
+        if not os.path.exists(base_dir):
+            continue
+            
+        for root, dirs, files in os.walk(base_dir):
+            normalized_root = os.path.normpath(root)
+            
+            # Generate directory listing
+            item_list = []
+            
+            # Parent directory link (only if we are not in the base_dir itself)
+            if normalized_root != base_dir:
+                item_list.append({
+                    "name": "..",
+                    "is_dir": True,
+                    "size": "-",
+                    "url": "../"
+                })
+                
+            # Add directories
+            for d in sorted(dirs):
+                if d.startswith("."):
+                    continue
+                item_list.append({
+                    "name": d + "/",
+                    "is_dir": True,
+                    "size": "-",
+                    "url": f"{d}/"
+                })
+                
+            # Add files
+            for f in sorted(files):
+                if f == "index.html" or f.startswith("."):
+                    continue
+                file_path = os.path.join(normalized_root, f)
+                size_bytes = os.path.getsize(file_path)
+                
+                # Format size
+                if size_bytes < 1024:
+                    size_str = f"{size_bytes} B"
+                elif size_bytes < 1024 * 1024:
+                    size_str = f"{size_bytes / 1024:.1f} KB"
+                else:
+                    size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+                    
+                item_list.append({
+                    "name": f,
+                    "is_dir": False,
+                    "size": size_str,
+                    "url": f
+                })
+                
+            # Generate HTML for items
+            items_html = ""
+            for item in item_list:
+                icon = "📁" if item["is_dir"] else "📄"
+                class_name = "dir" if item["is_dir"] else "file"
+                items_html += f"""
+                <tr class="{class_name}">
+                    <td class="name"><span class="icon">{icon}</span><a href="{item["url"]}">{item["name"]}</a></td>
+                    <td class="size">{item["size"]}</td>
+                </tr>"""
+                
+            # Path breadcrumbs for title/header
+            display_path = normalized_root.replace("\\", "/")
+            
+            html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index of /{display_path}</title>
+    <style>
+        body {{
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            padding: 2rem;
+            margin: 0;
+            font-size: 0.9rem;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #151d30;
+            padding: 1.5rem 2rem;
+            border-radius: 8px;
+            border: 1px solid #1e293b;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }}
+        h1 {{
+            font-size: 1.4rem;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 0.75rem;
+            margin-top: 0;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            color: #f3f4f6;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        th, td {{
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+        }}
+        th {{
+            border-bottom: 2px solid #1e293b;
+            color: #9ca3af;
+            font-weight: 600;
+        }}
+        td.name {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        a {{
+            color: #3b82f6;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+            color: #60a5fa;
+        }}
+        tr:hover td {{
+            background-color: rgba(255, 255, 255, 0.02);
+        }}
+        .icon {{
+            font-size: 1.1rem;
+        }}
+        .size {{
+            color: #9ca3af;
+            text-align: right;
+        }}
+        th.size-header {{
+            text-align: right;
+        }}
+        footer {{
+            margin-top: 1.5rem;
+            border-top: 1px solid #1e293b;
+            padding-top: 0.75rem;
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Index of /{display_path}</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th class="size-header">Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+        <footer>
+            Serverless Package Repository Manager
+        </footer>
+    </div>
+</body>
+</html>
+"""
+            with open(os.path.join(normalized_root, "index.html"), "w") as f_out:
+                f_out.write(html_content)
+    print("Autoindexes generated successfully.")
 
 def main():
     repo_owner, repo_name = get_repo_info()
@@ -929,6 +1103,9 @@ def main():
     
     # Generate index.html landing page
     generate_landing_page(repo_owner, repo_name, all_packages, has_gpg)
+    
+    # Generate autoindexes for all directories to act as a file browser and prevent 404s
+    generate_autoindexes()
     
     # Clean up temp directories
     shutil.rmtree("temp_apt", ignore_errors=True)
